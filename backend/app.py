@@ -11,6 +11,7 @@ from ai_providers import GeminiProvider, OpenAIProvider, ClaudeProvider
 
 load_dotenv()
 app = Flask(__name__)
+app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max request size
 CORS(app)
 # esto se puede cambiar en el env pero lo dejo aca hardcoded pq si
 MAX_MESSAGES = int(os.getenv('MAX_MESSAGES', 5))
@@ -92,6 +93,12 @@ def chat():
         provider_name = data.get('provider', 'gemini').lower()
         model_name = data.get('model')
         session_id = data.get('session_id', 'default')
+        
+        # debug imagen
+        if image_data:
+            print(f"📸 Imagen recibida: {len(image_data)} chars de base64")
+        else:
+            print("📭 No se recibió imagen")
         
         # algunas validaciones basicas
         if not user_message and not image_data:

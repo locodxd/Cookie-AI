@@ -18,7 +18,22 @@ const PLACEHOLDERS = [
     "How long does Flavortown run?",
     "What's double-dipping?",
     "How do devlogs work?",
-    "Can I make hardware projects?"
+    "Can I make hardware projects?",
+    "Why does my project show as Unknown?",
+    "How do Shipwrights review projects?",
+    "What counts as a shippable project?",
+    "Can I update an old project for Flavortown?",
+    "How do peer ratings work?",
+    "What's the cookie multiplier?",
+    "Do I need to make devlogs?",
+    "Can I ship a PCB design?",
+    "What editors support Hackatime?",
+    "How do I join Hack Club Slack?",
+    "What happens with customs fees?",
+    "Can I suggest new prizes?",
+    "What's the difference between flash models?",
+    "How many votes does each project get?",
+    "Can I work on multiple projects?"
 ];
 
 // funcion loca para escribir texto como hacker
@@ -160,20 +175,7 @@ function setupEventListeners() {
     imageInput.addEventListener('change', (e) => {
         const file = e.target.files[0];
         if (file) {
-            // checar que no sea muy pesada porque la vps es medio basica
-            if (file.size > 5 * 1024 * 1024) {
-                alert('Image is too big (max 5MB)');
-                return;
-            }
-            
-            const reader = new FileReader();
-            reader.onload = (event) => {
-                const base64String = event.target.result;
-                selectedImageBase64 = base64String.split(',')[1];
-                imagePreview.src = base64String;
-                imagePreviewContainer.style.display = 'block';
-            };
-            reader.readAsDataURL(file);
+            processImageFile(file);
         }
     });
     
@@ -182,6 +184,112 @@ function setupEventListeners() {
         imagePreviewContainer.style.display = 'none';
         imageInput.value = '';
     });
+    
+    // evento para pegar imágenes con Ctrl+V
+    document.addEventListener('paste', (e) => {
+        const items = e.clipboardData?.items;
+        if (!items) return;
+        
+        for (let item of items) {
+            if (item.type.startsWith('image/')) {
+                e.preventDefault();
+                const file = item.getAsFile();
+                if (!file) continue;
+                
+                processImageFile(file);
+                break; // solo procesar la primera imagen
+            }
+        }
+    });
+}
+
+// Función para procesar y comprimir imágenes
+async function processImageFile(file) {
+    // validar que sea imagen
+    if (!file.type.startsWith('image/')) {
+        alert('eso no es una imagen pa');
+        return;
+    }
+    
+    // checar que no sea muy pesada (máximo inicial 10MB)
+    if (file.size > 10 * 1024 * 1024) {
+        alert('imagen muy pesada (max 10MB)');
+        return;
+    }
+    
+    try {
+        const img = new Image();
+        const reader = new FileReader();
+        
+        reader.onload = (e) => {
+            img.src = e.target.result;
+        };
+        
+        img.onload = () => {
+            // Redimensionar si es muy grande
+            let width = img.width;
+            let height = img.height;
+            const maxDimension = 1920; // máximo 1920px en cualquier lado
+            
+            if (width > maxDimension || height > maxDimension) {
+                const ratio = Math.min(maxDimension / width, maxDimension / height);
+                width = Math.floor(width * ratio);
+                height = Math.floor(height * ratio);
+                console.log(`🔽 Redimensionando imagen de ${img.width}x${img.height} a ${width}x${height}`);
+            }
+            
+            // Crear canvas para comprimir
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, width, height);
+            
+            // Convertir a base64 con compresión
+            canvas.toBlob((blob) => {
+                if (!blob) {
+                    alert('error procesando imagen');
+                    return;
+                }
+                
+                // Verificar tamaño después de comprimir
+                const compressedSizeKB = blob.size / 1024;
+                console.log(`📦 Imagen comprimida: ${compressedSizeKB.toFixed(0)}KB`);
+                
+                if (blob.size > 5 * 1024 * 1024) {
+                    alert('imagen muy pesada incluso después de comprimir (max 5MB)');
+                    return;
+                }
+                
+                // Convertir blob a base64
+                const blobReader = new FileReader();
+                blobReader.onload = (event) => {
+                    const base64String = event.target.result;
+                    const base64Data = base64String.split(',')[1];
+                    
+                    if (!base64Data || base64Data.length < 100) {
+                        alert('imagen vacía o corrupta');
+                        return;
+                    }
+                    
+                    selectedImageBase64 = base64Data;
+                    imagePreview.src = base64String;
+                    imagePreviewContainer.style.display = 'block';
+                    console.log('✅ Imagen lista para enviar');
+                };
+                blobReader.readAsDataURL(blob);
+            }, 'image/jpeg', 0.85); // JPEG con calidad 85%
+        };
+        
+        img.onerror = () => {
+            alert('error cargando la imagen');
+        };
+        
+        reader.readAsDataURL(file);
+    } catch (err) {
+        console.error('error procesando imagen:', err);
+        alert('no se pudo procesar la imagen');
+    }
 }
 
 
@@ -384,7 +492,47 @@ function updateModelSelect() {
         modelSelect.appendChild(option);
     });
     
-    currentModel = models[0];
+    // Orden de preferencia para seleccionar modelo por defecto
+    const modelPreferences = [
+        'gemini-2.5-flash',                    // Primera opción: gemini-2.5-flash (mejor)
+        'gemini-2.5-flash-preview-09-2025',    // Segunda: preview full
+        'gemini-2.5-flash-lite',               // Tercera: lite
+        'gemini-2.5-flash-lite-preview-09-2025', // Cuarta: preview lite
+    ];
+    
+    let selectedModel = null;
+    
+    // Buscar el primer modelo que coincida exactamente con nuestras preferencias
+    for (const preference of modelPreferences) {
+        // Primero intenta match exacto
+        let found = models.find(m => m === preference || m.trim() === preference.trim());
+        if (found) {
+            selectedModel = found;
+            console.log(`✅ Modelo seleccionado (exacto): ${getShortModelName(selectedModel)}`);
+            break;
+        }
+    }
+    
+    // Si no encuentra match exacto, busca por substring (pero ordenado correctamente)
+    if (!selectedModel) {
+        for (const preference of modelPreferences) {
+            let found = models.find(m => m.includes(preference));
+            if (found) {
+                selectedModel = found;
+                console.log(`✅ Modelo seleccionado (parcial): ${getShortModelName(selectedModel)}`);
+                break;
+            }
+        }
+    }
+    
+    // Si no encuentra ninguno preferido, usa el primero disponible
+    if (!selectedModel) {
+        selectedModel = models[0];
+        console.log(`⚠️  Usando modelo disponible: ${getShortModelName(selectedModel)}`);
+    }
+    
+    currentModel = selectedModel;
+    modelSelect.value = currentModel;
 }
 async function sendMessage() {
     if (isLoading) return;
@@ -396,10 +544,14 @@ async function sendMessage() {
     const imageUrlToDisplay = selectedImageBase64 ? `data:image/jpeg;base64,${selectedImageBase64}` : null;
     
     messageInput.value = '';
-    selectedImageBase64 = null;
-    imagePreviewContainer.style.display = 'none';
-    imageInput.value = '';
     autoResizeTextarea();
+    
+    // limpiar imagen despues de un poquito para que no se bugee
+    setTimeout(() => {
+        selectedImageBase64 = null;
+        imagePreviewContainer.style.display = 'none';
+        imageInput.value = '';
+    }, 100);
     
     const welcomeMsg = chatContainer.querySelector('.welcome-message');
     if (welcomeMsg) welcomeMsg.remove();
@@ -417,16 +569,23 @@ async function sendMessage() {
     const loadingId = addLoadingMessage();
     
     try {
+        // debug: ver si la imagen se está mandando
+        if (imageToSend) {
+            console.log('📸 Enviando imagen:', imageToSend.length, 'chars de base64');
+        }
+        
+        const requestBody = {
+            message: message,
+            image: imageToSend || null, // base64 puro pal server
+            provider: currentProvider,
+            model: currentModel,
+            session_id: chat.id
+        };
+        
         const response = await fetch(`${API_URL}/chat`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                message: message,
-                image: imageToSend, // base64 puro pal server
-                provider: currentProvider,
-                model: currentModel,
-                session_id: chat.id
-            })
+            body: JSON.stringify(requestBody)
         });
         const data = await response.json();
         removeLoadingMessage(loadingId);
@@ -447,8 +606,16 @@ async function sendMessage() {
         }
     } catch (error) {
         removeLoadingMessage(loadingId);
-        addSystemMessage('Could not connect to server');
-        console.error(error);
+        console.error('Error al conectar:', error);
+        
+        // mensaje más descriptivo según el error
+        if (error.message.includes('Failed to fetch') || error.name === 'TypeError') {
+            addSystemMessage('❌ No se pudo conectar al servidor. Verifica que el backend esté corriendo.');
+        } else if (error.message.includes('NetworkError')) {
+            addSystemMessage('❌ Error de red. Verifica tu conexión a internet.');
+        } else {
+            addSystemMessage(`❌ Error: ${error.message || 'No se pudo enviar el mensaje'}`);
+        }
     } finally {
         isLoading = false;
         sendBtn.disabled = false;
@@ -462,7 +629,14 @@ function addMessageToDOM(role, content, model = null, imageUrl = null) {
     const icon = role === 'user' ? '👤' : '🍪';
     const sender = role === 'user' ? 'you' : 'CookieAI';
     const modelText = model ? `<div class="message-meta">${getShortModelName(model)}</div>` : '';
-    const imageHtml = imageUrl ? `<div class="message-image-wrapper"><img src="${imageUrl}" class="message-image" alt="uploaded-image"></div>` : '';
+    
+    let contentHtml = '';
+    if (imageUrl) {
+        contentHtml += `<div class="message-image-wrapper"><img src="${imageUrl}" class="message-image" alt="image"></div>`;
+    }
+    if (content) {
+        contentHtml += parseMarkdown(content);
+    }
     
     messageDiv.innerHTML = `
         <div class="message-header">
@@ -470,8 +644,7 @@ function addMessageToDOM(role, content, model = null, imageUrl = null) {
             <span class="message-sender">${sender}</span>
         </div>
         <div class="message-content">
-            ${imageHtml}
-            ${content ? parseMarkdown(content) : ''}
+            ${contentHtml}
         </div>
         ${modelText}
     `;
