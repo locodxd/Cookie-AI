@@ -10,11 +10,9 @@ from pathlib import Path
 from ai_providers import GeminiProvider, OpenAIProvider, ClaudeProvider
 
 load_dotenv()
-
 app = Flask(__name__)
 CORS(app)
-
-# === CONFIG ===
+# esto se puede cambiar en el env pero lo dejo aca hardcoded pq si
 MAX_MESSAGES = int(os.getenv('MAX_MESSAGES', 5))
 RATE_LIMIT_SECONDS = int(os.getenv('RATE_LIMIT_SECONDS', 10))
 
@@ -23,7 +21,7 @@ rate_limit_storage = {}
 
 conversation_history = {}
 
-# inicializamos los providers
+# amigo igual esto no sé si se llaman asi, esto es un #TODO porque realmente solo probé gemini
 providers = {
     'gemini': GeminiProvider(),
     'openai': OpenAIProvider(),
@@ -31,8 +29,7 @@ providers = {
 }
 
 
-def check_rate_limit(ip_address):
-    """che, fijate si no esta spameando mucho"""
+def check_rate_limiting_por_ips(ip_address):
     current_time = datetime.now()
     
     if ip_address not in rate_limit_storage:
@@ -56,7 +53,7 @@ def check_rate_limit(ip_address):
     return True, 0
 
 
-def get_conversation_history(session_id, max_messages=10):
+def conseguir_conversation_history(session_id, max_messages=10):
 
     if session_id not in conversation_history:
         conversation_history[session_id] = []
@@ -64,7 +61,7 @@ def get_conversation_history(session_id, max_messages=10):
     return conversation_history[session_id][-max_messages:]
 
 
-def add_to_history(session_id, role, content):
+def añadir_to_history(session_id, role, content):
     if session_id not in conversation_history:
         conversation_history[session_id] = []
     
@@ -81,11 +78,8 @@ def add_to_history(session_id, role, content):
 @app.route('/api/chat', methods=['POST'])
 def chat():
     try:
-        # sacamos la IP para el rate limiting
         ip_address = request.headers.get('X-Forwarded-For', request.remote_addr)
-        
-        # verificamos rate limit
-        allowed, wait_time = check_rate_limit(ip_address)
+        allowed, wait_time = check_rate_limiting_por_ips(ip_address)
         if not allowed:
             return jsonify({
                 'error': f'tranqui pa, espera {wait_time} segundos',
@@ -98,35 +92,25 @@ def chat():
         model_name = data.get('model')
         session_id = data.get('session_id', 'default')
         
-        # validaciones basicas
+        # algunas validaciones basicas
         if not user_message:
             return jsonify({'error': 'manda algo loco'}), 400
-        
         if len(user_message) > 4000:
             return jsonify({'error': 'mensaje muy largo, corta un toque'}), 400
-        
         if provider_name not in providers:
-            return jsonify({'error': 'ese provider no existe che'}), 400
-        
-        add_to_history(session_id, 'user', user_message)
-        
-        history = get_conversation_history(session_id)
-        
+            return jsonify({'error': 'ese provider no existe brother'}), 400
+        añadir_to_history(session_id, 'user', user_message)
+        history = conseguir_conversation_history(session_id)
         provider = providers[provider_name]
         response = provider.generate_response(user_message, model_name, history)
-        
         if response.get('error'):
             return jsonify(response), 500
-        
-        add_to_history(session_id, 'assistant', response['message'])
+        añadir_to_history(session_id, 'assistant', response['message'])
         
         return jsonify(response), 200
-        
     except Exception as e:
         print(f"error en chat: {str(e)}")
-        return jsonify({'error': 'algo salio mal pa, intenta de nuevo'}), 500
-
-
+        return jsonify({'error': 'Something salio mal pa, intenta de nuevo'}), 500
 @app.route('/api/models', methods=['GET'])
 def get_models():
     try:
@@ -145,10 +129,8 @@ def clear_history():
     try:
         data = request.json
         session_id = data.get('session_id', 'default')
-        
         if session_id in conversation_history:
             conversation_history[session_id] = []
-        
         return jsonify({'message': 'historial borrado'}), 200
     except Exception as e:
         return jsonify({'error': 'no se pudo borrar el historial'}), 500

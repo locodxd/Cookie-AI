@@ -3,7 +3,7 @@ from abc import ABC, abstractmethod
 import google.generativeai as genai
 from openai import OpenAI
 from anthropic import Anthropic
-
+# dios estoy segurisimo que si ponen una key de open ai o anthropic va a fallar
 
 class AIProvider(ABC):
     
@@ -34,8 +34,8 @@ class GeminiProvider(AIProvider):
         system_prompt = os.getenv('SYSTEM_PROMPT')
         self.system_prompt = system_prompt or self._get_default_prompt()
     
-    def _get_default_prompt(self):
-        # Primero intenta cargar cookie-prompt.txt (custom del usuario)
+    def conseguir_el_default_prompt(self):
+        # esto primero intenta cargar a ver si es que lo pusieron o carga el de flavortown
         try:
             custom_prompt_path = os.path.join(os.path.dirname(__file__), '..', 'cookie-prompt.txt')
             if os.path.exists(custom_prompt_path):
@@ -45,7 +45,8 @@ class GeminiProvider(AIProvider):
         except Exception as e:
             print(f"⚠️  No se pudo cargar cookie-prompt.txt: {e}")
         
-        # Si no hay custom prompt, carga el de flavortown
+        # Si no hay custom prompt, carga el de flavortown amigo esto está super hardcodeado porque realmente 
+        # ya existe el txt
         try:
             prompt_path = os.path.join(os.path.dirname(__file__), 'flavortown_prompt.txt')
             with open(prompt_path, 'r', encoding='utf-8') as f:
@@ -139,9 +140,9 @@ class OpenAIProvider(AIProvider):
         self.current_key_index = 0
         self.models = os.getenv('OPENAI_MODELS', 'gpt-4o-mini').split(',')
         system_prompt = os.getenv('SYSTEM_PROMPT')
-        self.system_prompt = system_prompt or self._get_default_prompt()
+        self.system_prompt = system_prompt or self.conseguir_el_default_prompt()
     
-    def _get_default_prompt(self):
+    def conseguir_el_default_prompt(self):
         try:
             custom_prompt_path = os.path.join(os.path.dirname(__file__), '..', 'cookie-prompt.txt')
             if os.path.exists(custom_prompt_path):
@@ -238,9 +239,9 @@ class ClaudeProvider(AIProvider):
         self.current_key_index = 0
         self.models = os.getenv('CLAUDE_MODELS', 'claude-3-5-haiku-20241022').split(',')
         system_prompt = os.getenv('SYSTEM_PROMPT')
-        self.system_prompt = system_prompt or self._get_default_prompt()
+        self.system_prompt = system_prompt or self.conseguir_el_default_prompt()
     
-    def _get_default_prompt(self):
+    def conseguir_el_default_prompt(self):
         try:
             custom_prompt_path = os.path.join(os.path.dirname(__file__), '..', 'cookie-prompt.txt')
             if os.path.exists(custom_prompt_path):

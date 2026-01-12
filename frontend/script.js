@@ -21,9 +21,27 @@ const PLACEHOLDERS = [
     "Can I make hardware projects?"
 ];
 
-const randomPlaceholder = PLACEHOLDERS[Math.floor(Math.random() * PLACEHOLDERS.length)];
+// funcion loca para escribir texto como hacker
+async function typeWriterEffect(element, texts) {
+    while (true) { // bucle infinito de escritura
+        const text = texts[Math.floor(Math.random() * texts.length)];
+        
+        for (let i = 0; i <= text.length; i++) {
+            element.placeholder = text.substring(0, i);
+            await new Promise(r => setTimeout(r, 50 + Math.random() * 50)); 
+        }
 
-// === STATE ===
+        await new Promise(r => setTimeout(r, 2000));
+        
+        for (let i = text.length; i >= 0; i--) {
+            element.placeholder = text.substring(0, i);
+            await new Promise(r => setTimeout(r, 30));
+        }
+        
+        await new Promise(r => setTimeout(r, 500));
+    }
+}
+
 let chats = JSON.parse(localStorage.getItem('cookieai_chats')) || [];
 let currentChatId = localStorage.getItem('cookieai_current_chat');
 let currentProvider = 'gemini';
@@ -34,8 +52,6 @@ let isLoading = false;
 if (chats.length === 0) {
     createNewChat();
 }
-
-// === DOM ELEMENTS ===
 const chatContainer = document.getElementById('chat-container');
 const messageInput = document.getElementById('message-input');
 const sendBtn = document.getElementById('send-btn');
@@ -56,8 +72,7 @@ document.addEventListener('DOMContentLoaded', () => {
     loadCurrentChat();
     autoResizeTextarea();
     
-    // aplicar placeholder aleatorio
-    messageInput.placeholder = randomPlaceholder;
+    typeWriterEffect(messageInput, PLACEHOLDERS);
 });
 
 function setupEventListeners() {
@@ -85,8 +100,8 @@ function setupEventListeners() {
     messageInput.addEventListener('input', autoResizeTextarea);
 }
 
-// === CHAT MANAGEMENT ===
 
+// manejo del chat 
 function createNewChat() {
     const newChat = {
         id: generateId(),
@@ -209,7 +224,7 @@ function toggleSidebar() {
     sidebar.classList.toggle('hidden');
 }
 
-// === FUNCIONES PRINCIPALES ===
+// Estas son las funciones principales del chat
 
 async function loadModels(retries = 3) {
     try {
@@ -238,7 +253,7 @@ async function loadModels(retries = 3) {
         addSystemMessage('Could not load models');
     }
 }
-
+// algunos modelos de IA tienen nombres larguisimos, aca los acortamos, igual no sé si esto funcionara si es que pone otro modelo
 function getShortModelName(modelName) {
     const shortcuts = {
         'gemini-2.5-flash-lite-preview-09-2025': 'flash-lite-preview',
@@ -278,27 +293,19 @@ function updateModelSelect() {
 
 async function sendMessage() {
     if (isLoading) return;
-    
     const message = messageInput.value.trim();
     if (!message) return;
-    
     const chat = getCurrentChat();
-    
     messageInput.value = '';
     autoResizeTextarea();
-    
     const welcomeMsg = chatContainer.querySelector('.welcome-message');
     if (welcomeMsg) welcomeMsg.remove();
-    
     addMessageToDOM('user', message);
     chat.messages.push({ role: 'user', content: message });
-    
     updateChatTitle(message);
-    
     isLoading = true;
     sendBtn.disabled = true;
     const loadingId = addLoadingMessage();
-    
     try {
         const response = await fetch(`${API_URL}/chat`, {
             method: 'POST',
@@ -310,7 +317,6 @@ async function sendMessage() {
                 session_id: chat.id
             })
         });
-        
         const data = await response.json();
         removeLoadingMessage(loadingId);
         
@@ -328,7 +334,6 @@ async function sendMessage() {
             });
             saveChats();
         }
-        
     } catch (error) {
         removeLoadingMessage(loadingId);
         addSystemMessage('Could not connect to server');
@@ -339,7 +344,6 @@ async function sendMessage() {
         messageInput.focus();
     }
 }
-
 function addMessageToDOM(role, content, model = null) {
     const messageDiv = document.createElement('div');
     messageDiv.className = `message ${role}`;
@@ -347,20 +351,17 @@ function addMessageToDOM(role, content, model = null) {
     const icon = role === 'user' ? '👤' : '🍪';
     const sender = role === 'user' ? 'you' : 'CookieAI';
     const modelText = model ? `<div class="message-meta">${getShortModelName(model)}</div>` : '';
-    
     messageDiv.innerHTML = `
         <div class="message-header">
             <span class="message-icon">${icon}</span>
             <span class="message-sender">${sender}</span>
         </div>
-        <div class="message-content">${escapeHtml(content)}</div>
+        <div class="message-content">${parseMarkdown(content)}</div>
         ${modelText}
     `;
-    
     chatContainer.appendChild(messageDiv);
     scrollToBottom();
 }
-
 function addSystemMessage(content) {
     const messageDiv = document.createElement('div');
     messageDiv.className = 'message assistant';
@@ -370,13 +371,11 @@ function addSystemMessage(content) {
             <span class="message-icon">ℹ️</span>
             <span class="message-sender">system</span>
         </div>
-        <div class="message-content">${escapeHtml(content)}</div>
+        <div class="message-content">${parseMarkdown(content)}</div>
     `;
-    
     chatContainer.appendChild(messageDiv);
     scrollToBottom();
 }
-
 function addLoadingMessage() {
     const loadingDiv = document.createElement('div');
     const loadingId = `loading-${Date.now()}`;
@@ -407,7 +406,7 @@ function removeLoadingMessage(loadingId) {
     const loadingMsg = document.getElementById(loadingId);
     if (loadingMsg) loadingMsg.remove();
 }
-
+// por si acaso queria probar solo el boton y es bien menso
 async function clearChat() {
     if (!confirm('Are you sure you want to clear everything?')) return;
     
@@ -448,7 +447,32 @@ function generateId() {
     return 'chat_' + Math.random().toString(36).substr(2, 9) + '_' + Date.now();
 }
 
+// funcion para parsear markdown basico ;3
+function parseMarkdown(text) {
+    let clean = text
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;") 
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+
+    
+    clean = clean.replace(/\*\*(.*?)\*\*/g, '<b>$1</b>');
+    clean = clean.replace(/\*(.*?)\*/g, '<i>$1</i>');
+    clean = clean.replace(/`(.*?)`/g, '<code style="background: rgba(255,255,255,0.1); padding: 2px 4px; border-radius: 4px; font-family: monospace;">$1</code>');
+    // Listas: - item => <li>item</li> (un poco hacky pero funciona)
+    clean = clean.replace(/^\s*-\s+(.*)$/gm, '<li>$1</li>');
+    
+    // Envolver items de lista en <ul> si hay varios seguidos seria lo ideal
+    // pero por ahora dejemos que el navegador se las arregle jaja
+    clean = clean.replace(/\[(.*?)\]\((.*?)\)/g, '<a href="$2" target="_blank" style="color: #0084ff; text-decoration: underline;">$1</a>');
+    clean = clean.replace(/\n/g, '<br>');
+
+    return clean;
+}
+
 function escapeHtml(text) {
+    // mantengo esta por si la necesito para algo plano
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML.replace(/\n/g, '<br>');
