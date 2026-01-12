@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CookieAI</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- sidebar -->
+    <div class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+            <div class="logo">
+                <span class="cookie-icon">🍪</span>
+                <h1>CookieAI</h1>
+            </div>
+            <button id="new-chat-btn" class="new-chat-btn">+ new chat</button>
+        </div>
+        
+        <div class="chats-list" id="chats-list">
+            <!-- chats se generan dinamicamente -->
+        </div>
+    </div>
+
+    <!-- main content -->
+    <div class="main-content">
+        <!-- header -->
+        <header>
+            <button id="toggle-sidebar-btn" class="toggle-sidebar-btn">☰</button>
+            <div class="controls">
+                <select id="provider-select" class="selector">
+                    <option value="gemini">Gemini</option>
+                    <option value="openai">OpenAI</option>
+                    <option value="claude">Claude</option>
+                </select>
+                <select id="model-select" class="selector">
+                    <option value="">Loading...</option>
+                </select>
+                <button id="clear-btn" class="icon-btn" title="clear chat">🗑️</button>
+            </div>
+        </header>
+
+        <!-- chat container -->
+        <div id="chat-container" class="chat-container">
+            <div class="welcome-message">
+                <div class="welcome-icon">🍪</div>
+                <h2>Hey! I'm CookieAI</h2>
+                <p>what can I help you with?</p>
+            </div>
+        </div>
+
+        <!-- input area -->
+        <div class="input-area">
+            <div class="input-wrapper">
+                <textarea 
+                    id="message-input" 
+                    placeholder="Ask me something..."
+                    rows="1"
+                ></textarea>
+                <button id="send-btn" class="send-btn">
+                    <span class="send-icon">➤</span>
+                </button>
+            </div>
+            <div id="rate-limit-info" class="rate-limit-info"></div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
