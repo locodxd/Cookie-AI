@@ -88,12 +88,13 @@ def chat():
         
         data = request.json
         user_message = data.get('message', '').strip()
+        image_data = data.get('image')
         provider_name = data.get('provider', 'gemini').lower()
         model_name = data.get('model')
         session_id = data.get('session_id', 'default')
         
         # algunas validaciones basicas
-        if not user_message:
+        if not user_message and not image_data:
             return jsonify({'error': 'manda algo loco'}), 400
         if len(user_message) > 4000:
             return jsonify({'error': 'mensaje muy largo, corta un toque'}), 400
@@ -102,7 +103,7 @@ def chat():
         añadir_to_history(session_id, 'user', user_message)
         history = conseguir_conversation_history(session_id)
         provider = providers[provider_name]
-        response = provider.generate_response(user_message, model_name, history)
+        response = provider.generate_response(user_message, model_name, history, image_data=image_data)
         if response.get('error'):
             return jsonify(response), 500
         añadir_to_history(session_id, 'assistant', response['message'])

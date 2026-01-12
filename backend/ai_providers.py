@@ -66,46 +66,46 @@ For details, direct them to #flavortown-help on Hack Club Slack."""
         self.current_key_index = (self.current_key_index + 1) % len(self.api_keys)
         return key
     
-    def generate_response(self, message, model=None, history=None):
+    def generate_response(self, message, model=None, history=None, image_data=None):
         """genera una respuesta con gemini"""
         if not self.api_keys:
             return {'error': 'no hay keys de gemini configuradas'}
         
         model = model or self.models[0]
         
-        # intentamos con todas las keys hasta que una funcione XD
         for attempt in range(len(self.api_keys)):
             try:
                 api_key = self._get_next_key()
                 genai.configure(api_key=api_key)
-                
                 model_instance = genai.GenerativeModel(model_name=model)
                 
-                chat_history = []
+                # preparamos el mensaje actual (con imagen si hay)
+                parts = [message]
+                if image_data:
+                    # En Gemini, las imagenes van como dicts con mime_type y data
+                    # El image_data que llega es base64 puro
+                    parts.append({
+                        "mime_type": "image/jpeg",
+                        "data": image_data
+                    })
 
-                chat_history.append({'role': 'user', 'parts': [self.system_prompt]})
-                chat_history.append({'role': 'model', 'parts': ['Understood.']})
+                # Para mantener memoria con vision, hay que mandar todo el historial
+                # Gemini start_chat no soporta mezclar texto e imagenes tan facil en el historial
+                # asi que usamos generate_content con la lista de mensajes
                 
-                # agregamos historial ccompletoo
+                full_history = []
+                full_history.append({'role': 'user', 'parts': [self.system_prompt]})
+                full_history.append({'role': 'model', 'parts': ['Understood.']})
+                
                 if history:
-                    for i, msg in enumerate(history):
-                        if msg['role'] == 'user':
-                            chat_history.append({'role': 'user', 'parts': [msg['content']]})
-                        elif msg['role'] == 'assistant':
-                            chat_history.append({'role': 'model', 'parts': [msg['content']]})
-                        # esto quema tokens pero ayuda a que el modelo no se olvide 
-                        if (i + 1) % 4 == 0:
-                            chat_history.append({'role': 'user', 'parts': ['[REMINDER: Follow your system instructions.]']})
-                            chat_history.append({'role': 'model', 'parts': ['Acknowledged.']})
+                    for msg in history:
+                        role = 'user' if msg['role'] == 'user' else 'model'
+                        full_history.append({'role': role, 'parts': [msg['content']]})
                 
-                chat_history.append({'role': 'user', 'parts': ['[Remember your role and context from system instructions.]']})
-                chat_history.append({'role': 'model', 'parts': ['Ready.']})
+                # Mensaje final
+                full_history.append({'role': 'user', 'parts': parts})
                 
-
-                chat_history.append({'role': 'user', 'parts': [message]})
-                
-                chat = model_instance.start_chat(history=chat_history[:-1])  
-                response = chat.send_message(message)
+                response = model_instance.generate_content(full_history)
                 
                 return {
                     'message': response.text,
@@ -114,7 +114,12 @@ For details, direct them to #flavortown-help on Hack Club Slack."""
                 }
                 
             except Exception as e:
-                print(f"error con gemini key {attempt + 1}: {str(e)}")
+                error_str = str(e).lower()
+                print(f"error con gemini key {attempt + 1}: {error_str}")
+                
+                if "not support" in error_str or "image" in error_str:
+                    return {'error': 'Este modelo no soporta imágenes, loco.'}
+                
                 if attempt == len(self.api_keys) - 1:
                     return {'error': f'gemini no respondio: {str(e)}'}
                 continue
@@ -169,7 +174,7 @@ For details, direct them to #flavortown-help on Hack Club Slack."""
         self.current_key_index = (self.current_key_index + 1) % len(self.api_keys)
         return key
     
-    def generate_response(self, message, model=None, history=None):
+    def generate_response(self, message, model=None, history=None, image_data=None):
         if not self.api_keys:
             return {'error': 'no hay keys de openai configuradas'}
         
@@ -180,6 +185,19 @@ For details, direct them to #flavortown-help on Hack Club Slack."""
                 api_key = self._get_next_key()
                 client = OpenAI(api_key=api_key)
                 
+                # construimos el contenido del mensaje (texto + imagen opcional)
+                user_content = []
+                if message:
+                    user_content.append({"type": "text", "text": message})
+                
+                if image_data:
+                    user_content.append({
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:image/jpeg;base64,{image_data}"
+                        }
+                    })
+
                 # construimos los mensajes
                 messages = [
                     {
@@ -190,13 +208,13 @@ For details, direct them to #flavortown-help on Hack Club Slack."""
                 
                 # agregamos historial
                 if history:
-                    for msg in history[:-1]:
+                    for msg in history:
                         messages.append({
                             'role': msg['role'],
                             'content': msg['content']
                         })
                 
-                messages.append({'role': 'user', 'content': message})
+                messages.append({'role': 'user', 'content': user_content})
                 
                 response = client.chat.completions.create(
                     model=model,
@@ -212,7 +230,12 @@ For details, direct them to #flavortown-help on Hack Club Slack."""
                 }
                 
             except Exception as e:
-                print(f"error con openai key {attempt + 1}: {str(e)}")
+                error_str = str(e).lower()
+                print(f"error con openai key {attempt + 1}: {error_str}")
+                
+                if "not support" in error_str or "vision" in error_str:
+                    return {'error': 'Este modelo de OpenAI no soporta imágenes (usa gpt-4o o gpt-4o-mini).'}
+                
                 if attempt == len(self.api_keys) - 1:
                     return {'error': f'openai no respondio: {str(e)}'}
                 continue
@@ -269,7 +292,7 @@ For details, direct them to #flavortown-help on Hack Club Slack."""
         self.current_key_index = (self.current_key_index + 1) % len(self.api_keys)
         return key
     
-    def generate_response(self, message, model=None, history=None):
+    def generate_response(self, message, model=None, history=None, image_data=None):
         if not self.api_keys:
             return {'error': 'no hay keys de claude configuradas'}
         
@@ -280,16 +303,31 @@ For details, direct them to #flavortown-help on Hack Club Slack."""
                 api_key = self._get_next_key()
                 client = Anthropic(api_key=api_key)
                 
+                # construimos el contenido
+                user_content = []
+                if image_data:
+                    user_content.append({
+                        "type": "image",
+                        "source": {
+                            "type": "base64",
+                            "media_type": "image/jpeg",
+                            "data": image_data,
+                        },
+                    })
+                
+                if message:
+                    user_content.append({"type": "text", "text": message})
+
                 # construimos mensajes
                 messages = []
                 if history:
-                    for msg in history[:-1]:
+                    for msg in history:
                         messages.append({
                             'role': msg['role'],
                             'content': msg['content']
                         })
                 
-                messages.append({'role': 'user', 'content': message})
+                messages.append({'role': 'user', 'content': user_content})
                 
                 response = client.messages.create(
                     model=model,
@@ -305,7 +343,12 @@ For details, direct them to #flavortown-help on Hack Club Slack."""
                 }
                 
             except Exception as e:
-                print(f"error con claude key {attempt + 1}: {str(e)}")
+                error_str = str(e).lower()
+                print(f"error con claude key {attempt + 1}: {error_str}")
+                
+                if "not support" in error_str or "vision" in error_str:
+                    return {'error': 'Este modelo de Claude no soporta vision.'}
+                
                 if attempt == len(self.api_keys) - 1:
                     return {'error': f'claude no respondio: {str(e)}'}
                 continue

@@ -23,32 +23,29 @@ const PLACEHOLDERS = [
 
 // funcion loca para escribir texto como hacker
 async function typeWriterEffect(element, texts) {
-    while (true) { // bucle infinito de escritura
+    while (true) { 
         const text = texts[Math.floor(Math.random() * texts.length)];
         
         for (let i = 0; i <= text.length; i++) {
             element.placeholder = text.substring(0, i);
             await new Promise(r => setTimeout(r, 50 + Math.random() * 50)); 
         }
-
         await new Promise(r => setTimeout(r, 2000));
         
         for (let i = text.length; i >= 0; i--) {
             element.placeholder = text.substring(0, i);
             await new Promise(r => setTimeout(r, 30));
         }
-        
         await new Promise(r => setTimeout(r, 500));
     }
 }
 
-// === UTILS (PRIMERO para que esten disponibles) ===
 
 function generateId() {
     return 'chat_' + Math.random().toString(36).substr(2, 9) + '_' + Date.now();
 }
 
-// funcion para parsear markdown basico ;3
+// funcion para parsear un markdown basico ;3
 function parseMarkdown(text) {
     let clean = text
         .replace(/&/g, "&amp;")
@@ -74,7 +71,7 @@ function escapeHtml(text) {
     return div.innerHTML.replace(/\n/g, '<br>');
 }
 
-// === INIT DATA ===
+// este el init del script
 
 let chats = JSON.parse(localStorage.getItem('cookieai_chats')) || [];
 let currentChatId = localStorage.getItem('cookieai_current_chat');
@@ -82,6 +79,8 @@ let currentProvider = 'gemini';
 let currentModel = null;
 let availableModels = {};
 let isLoading = false;
+let selectedImageBase64 = null; // esto añade soporte al adjuntar imagenes, esto 
+// está siendo testeado con Gemini Vision por ahora
 
 // crear chat inicial si no hay ninguno
 if (chats.length === 0) {
@@ -97,7 +96,6 @@ if (chats.length === 0) {
     localStorage.setItem('cookieai_current_chat', currentChatId);
 }
 
-// === DOM ELEMENTS ===
 const chatContainer = document.getElementById('chat-container');
 const messageInput = document.getElementById('message-input');
 const sendBtn = document.getElementById('send-btn');
@@ -109,8 +107,12 @@ const sidebar = document.getElementById('sidebar');
 const toggleSidebarBtn = document.getElementById('toggle-sidebar-btn');
 const newChatBtn = document.getElementById('new-chat-btn');
 const chatsList = document.getElementById('chats-list');
-
-// === INIT ===
+const imageInput = document.getElementById('image-input');
+const attachBtn = document.getElementById('attach-btn');
+const imagePreview = document.getElementById('image-preview');
+const imagePreviewContainer = document.getElementById('image-preview-container');
+const removeImageBtn = document.getElementById('remove-image');
+// nunca mas voy a escribir const luego de esto
 document.addEventListener('DOMContentLoaded', () => {
     loadModels();
     setupEventListeners();
@@ -152,10 +154,38 @@ function setupEventListeners() {
     newChatBtn.addEventListener('click', createNewChat);
     
     messageInput.addEventListener('input', autoResizeTextarea);
+    
+    attachBtn.addEventListener('click', () => imageInput.click());
+    
+    imageInput.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (file) {
+            // checar que no sea muy pesada porque la vps es medio basica
+            if (file.size > 5 * 1024 * 1024) {
+                alert('Image is too big (max 5MB)');
+                return;
+            }
+            
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                const base64String = event.target.result;
+                selectedImageBase64 = base64String.split(',')[1];
+                imagePreview.src = base64String;
+                imagePreviewContainer.style.display = 'block';
+            };
+            reader.readAsDataURL(file);
+        }
+    });
+    
+    removeImageBtn.addEventListener('click', () => {
+        selectedImageBase64 = null;
+        imagePreviewContainer.style.display = 'none';
+        imageInput.value = '';
+    });
 }
 
 
-// manejo del chat 
+
 function createNewChat() {
     const newChat = {
         id: generateId(),
@@ -255,7 +285,7 @@ function loadCurrentChat() {
     } else {
         chat.messages.forEach(msg => {
             if (msg.role === 'user') {
-                addMessageToDOM('user', msg.content);
+                addMessageToDOM('user', msg.content, null, msg.image);
             } else {
                 addMessageToDOM('assistant', msg.content, msg.model);
             }
@@ -283,8 +313,6 @@ function toggleSidebar() {
 async function loadModels(retries = 5, delay = 1000) {
     try {
         console.log(`intentando cargar modelos... (intento ${6-retries})`);
-        
-        // avisar en el selector que estamos cargando
         if (retries === 5) {
             modelSelect.innerHTML = '<option value="">Loading models...</option>';
         }
@@ -307,7 +335,7 @@ async function loadModels(retries = 5, delay = 1000) {
         
         availableModels = data;
         updateModelSelect();
-        console.log("✅ modelos cargados piola");
+        console.log(" modelos cargados piola");
     } catch (error) {
         console.error('error cargando modelos:', error);
         
@@ -361,24 +389,40 @@ function updateModelSelect() {
 async function sendMessage() {
     if (isLoading) return;
     const message = messageInput.value.trim();
-    if (!message) return;
+    if (!message && !selectedImageBase64) return;
+    
     const chat = getCurrentChat();
+    const imageToSend = selectedImageBase64;
+    const imageUrlToDisplay = selectedImageBase64 ? `data:image/jpeg;base64,${selectedImageBase64}` : null;
+    
     messageInput.value = '';
+    selectedImageBase64 = null;
+    imagePreviewContainer.style.display = 'none';
+    imageInput.value = '';
     autoResizeTextarea();
+    
     const welcomeMsg = chatContainer.querySelector('.welcome-message');
     if (welcomeMsg) welcomeMsg.remove();
-    addMessageToDOM('user', message);
-    chat.messages.push({ role: 'user', content: message });
-    updateChatTitle(message);
+    
+    addMessageToDOM('user', message, null, imageUrlToDisplay);
+    chat.messages.push({ 
+        role: 'user', 
+        content: message,
+        image: imageUrlToDisplay 
+    });
+    
+    updateChatTitle(message || 'Image');
     isLoading = true;
     sendBtn.disabled = true;
     const loadingId = addLoadingMessage();
+    
     try {
         const response = await fetch(`${API_URL}/chat`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 message: message,
+                image: imageToSend, // base64 puro pal server
                 provider: currentProvider,
                 model: currentModel,
                 session_id: chat.id
@@ -411,19 +455,24 @@ async function sendMessage() {
         messageInput.focus();
     }
 }
-function addMessageToDOM(role, content, model = null) {
+function addMessageToDOM(role, content, model = null, imageUrl = null) {
     const messageDiv = document.createElement('div');
     messageDiv.className = `message ${role}`;
     
     const icon = role === 'user' ? '👤' : '🍪';
     const sender = role === 'user' ? 'you' : 'CookieAI';
     const modelText = model ? `<div class="message-meta">${getShortModelName(model)}</div>` : '';
+    const imageHtml = imageUrl ? `<div class="message-image-wrapper"><img src="${imageUrl}" class="message-image" alt="uploaded-image"></div>` : '';
+    
     messageDiv.innerHTML = `
         <div class="message-header">
             <span class="message-icon">${icon}</span>
             <span class="message-sender">${sender}</span>
         </div>
-        <div class="message-content">${parseMarkdown(content)}</div>
+        <div class="message-content">
+            ${imageHtml}
+            ${content ? parseMarkdown(content) : ''}
+        </div>
         ${modelText}
     `;
     chatContainer.appendChild(messageDiv);
@@ -473,9 +522,9 @@ function removeLoadingMessage(loadingId) {
     const loadingMsg = document.getElementById(loadingId);
     if (loadingMsg) loadingMsg.remove();
 }
-// por si acaso queria probar solo el boton y es bien menso
+// por si acaso queria probar solo el boton y es bien menso 
 async function clearChat() {
-    if (!confirm('Are you sure you want to clear everything?')) return;
+    if (!confirm('Are you sure you want to clear everything??')) return;
     
     const chat = getCurrentChat();
     
@@ -497,7 +546,6 @@ async function clearChat() {
         addSystemMessage('Could not clear history');
     }
 }
-
 function showRateLimitWarning(seconds) {
     rateLimitInfo.textContent = `Wait ${seconds}s`;
     rateLimitInfo.className = 'rate-limit-info rate-limit-warning';
