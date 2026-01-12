@@ -42,6 +42,40 @@ async function typeWriterEffect(element, texts) {
     }
 }
 
+// === UTILS (PRIMERO para que esten disponibles) ===
+
+function generateId() {
+    return 'chat_' + Math.random().toString(36).substr(2, 9) + '_' + Date.now();
+}
+
+// funcion para parsear markdown basico ;3
+function parseMarkdown(text) {
+    let clean = text
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;") 
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+
+    
+    clean = clean.replace(/\*\*(.*?)\*\*/g, '<b>$1</b>');
+    clean = clean.replace(/\*(.*?)\*/g, '<i>$1</i>');
+    clean = clean.replace(/`(.*?)`/g, '<code style="background: rgba(255,255,255,0.1); padding: 2px 4px; border-radius: 4px; font-family: monospace;">$1</code>');
+    clean = clean.replace(/^\s*-\s+(.*)$/gm, '<li>$1</li>');
+    clean = clean.replace(/\[(.*?)\]\((.*?)\)/g, '<a href="$2" target="_blank" style="color: #0084ff; text-decoration: underline;">$1</a>');
+    clean = clean.replace(/\n/g, '<br>');
+
+    return clean;
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML.replace(/\n/g, '<br>');
+}
+
+// === INIT DATA ===
+
 let chats = JSON.parse(localStorage.getItem('cookieai_chats')) || [];
 let currentChatId = localStorage.getItem('cookieai_current_chat');
 let currentProvider = 'gemini';
@@ -49,9 +83,21 @@ let currentModel = null;
 let availableModels = {};
 let isLoading = false;
 
+// crear chat inicial si no hay ninguno
 if (chats.length === 0) {
-    createNewChat();
+    const newChat = {
+        id: generateId(),
+        title: 'New chat',
+        messages: [],
+        createdAt: Date.now()
+    };
+    chats.unshift(newChat);
+    currentChatId = newChat.id;
+    localStorage.setItem('cookieai_chats', JSON.stringify(chats));
+    localStorage.setItem('cookieai_current_chat', currentChatId);
 }
+
+// === DOM ELEMENTS ===
 const chatContainer = document.getElementById('chat-container');
 const messageInput = document.getElementById('message-input');
 const sendBtn = document.getElementById('send-btn');
@@ -91,6 +137,14 @@ function setupEventListeners() {
     
     modelSelect.addEventListener('change', (e) => {
         currentModel = e.target.value;
+    });
+
+    // si el loco clickea el selector y no hay modelos, intentamos cargar de nuevo
+    modelSelect.addEventListener('click', () => {
+        if (!availableModels[currentProvider] || availableModels[currentProvider].length === 0) {
+            console.log("no hay modelos, cargando al clickear...");
+            loadModels(2);
+        }
     });
     
     clearBtn.addEventListener('click', clearChat);
@@ -226,31 +280,45 @@ function toggleSidebar() {
 
 // Estas son las funciones principales del chat
 
-async function loadModels(retries = 3) {
+async function loadModels(retries = 5, delay = 1000) {
     try {
-        const response = await fetch(`${API_URL}/models`, {
-            timeout: 5000
-        });
+        console.log(`intentando cargar modelos... (intento ${6-retries})`);
         
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}`);
+        // avisar en el selector que estamos cargando
+        if (retries === 5) {
+            modelSelect.innerHTML = '<option value="">Loading models...</option>';
         }
+
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10000);
+        
+        const response = await fetch(`${API_URL}/models`, {
+            signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+        
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
         
         const data = await response.json();
         
+        if (!data || Object.keys(data).length === 0) {
+            throw new Error("El server no devolvio modelos");
+        }
+        
         availableModels = data;
         updateModelSelect();
+        console.log("✅ modelos cargados piola");
     } catch (error) {
         console.error('error cargando modelos:', error);
         
-
         if (retries > 0) {
-            console.log(`Reintentando cargar modelos... (${retries} intentos restantes)`);
-            await new Promise(resolve => setTimeout(resolve, 1000)); // esperar 1s
-            return loadModels(retries - 1);
+            console.log(`Reintentando en ${delay}ms...`);
+            await new Promise(resolve => setTimeout(resolve, delay)); 
+            return loadModels(retries - 1, delay * 1.5); // backoff exponencial
         }
         
-        addSystemMessage('Could not load models');
+        modelSelect.innerHTML = '<option value="">Error loading models</option>';
+        addSystemMessage('Could not load models. Please refresh the page manually.');
     }
 }
 // algunos modelos de IA tienen nombres larguisimos, aca los acortamos, igual no sé si esto funcionara si es que pone otro modelo
@@ -290,7 +358,6 @@ function updateModelSelect() {
     
     currentModel = models[0];
 }
-
 async function sendMessage() {
     if (isLoading) return;
     const message = messageInput.value.trim();
@@ -441,43 +508,6 @@ function showRateLimitWarning(seconds) {
     }, seconds * 1000);
 }
 
-// === UTILS ===
-
-function generateId() {
-    return 'chat_' + Math.random().toString(36).substr(2, 9) + '_' + Date.now();
-}
-
-// funcion para parsear markdown basico ;3
-function parseMarkdown(text) {
-    let clean = text
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;") 
-        .replace(/"/g, "&quot;")
-        .replace(/'/g, "&#039;");
-
-    
-    clean = clean.replace(/\*\*(.*?)\*\*/g, '<b>$1</b>');
-    clean = clean.replace(/\*(.*?)\*/g, '<i>$1</i>');
-    clean = clean.replace(/`(.*?)`/g, '<code style="background: rgba(255,255,255,0.1); padding: 2px 4px; border-radius: 4px; font-family: monospace;">$1</code>');
-    // Listas: - item => <li>item</li> (un poco hacky pero funciona)
-    clean = clean.replace(/^\s*-\s+(.*)$/gm, '<li>$1</li>');
-    
-    // Envolver items de lista en <ul> si hay varios seguidos seria lo ideal
-    // pero por ahora dejemos que el navegador se las arregle jaja
-    clean = clean.replace(/\[(.*?)\]\((.*?)\)/g, '<a href="$2" target="_blank" style="color: #0084ff; text-decoration: underline;">$1</a>');
-    clean = clean.replace(/\n/g, '<br>');
-
-    return clean;
-}
-
-function escapeHtml(text) {
-    // mantengo esta por si la necesito para algo plano
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML.replace(/\n/g, '<br>');
-}
-
 function scrollToBottom() {
     chatContainer.scrollTop = chatContainer.scrollHeight;
 }
@@ -487,7 +517,7 @@ function autoResizeTextarea() {
     messageInput.style.height = Math.min(messageInput.scrollHeight, 120) + 'px';
 }
 
-// health check con reintentos
+// esto hace q reintente varias veces pq o si no hay que usar f5
 async function checkHealth(retries = 3) {
     try {
         const response = await fetch(`${API_URL}/health`);
