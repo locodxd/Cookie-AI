@@ -1,3 +1,7 @@
+// amigo este archivo fue un desastre de hacerlo, es un frankestein de codigo
+// asi que perdon por el desorden
+
+
 const API_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' 
     ? 'http://localhost:5000/api' 
     : '/api';
@@ -35,18 +39,45 @@ const PLACEHOLDERS = [
     "How many votes does each project get?",
     "Can I work on multiple projects?"
 ];
+const PLACEHOLDERS_AFTER_FIRST = [
+    "Thank you",
+    "Can you explain more?",
+    "That's interesting",
+    "I have another question...",
+    "Can you give an example?",
+    "How does that work?",
+    "What are the benefits?",
+    "Can you elaborate?",
+    "What's the next step?",
+    "How can I improve?",
+    "Any tips?",
+    "Oh, I see",
+    "Got it!",
+    "Makes sense",
+    "Cool, thanks!",
+    "Appreciate it!",
+    "That's helpful",
+    "Thanks for the info!",
+    "Great, thank you!",
+    "Thanks for explaining!"
+];
 
-// funcion loca para escribir texto como hacker
-async function typeWriterEffect(element, texts) {
-    while (true) { 
+let firstMessageSent = false;
+
+function getCurrentPlaceholders() {
+    return firstMessageSent ? PLACEHOLDERS_AFTER_FIRST : PLACEHOLDERS;
+}
+
+async function typeWriterEffect(element, getTexts) {
+    while (true) {
+        const texts = getTexts();
         const text = texts[Math.floor(Math.random() * texts.length)];
-        
+
         for (let i = 0; i <= text.length; i++) {
             element.placeholder = text.substring(0, i);
-            await new Promise(r => setTimeout(r, 50 + Math.random() * 50)); 
-        }
+            await new Promise(r => setTimeout(r, 50 + Math.random() * 50));
+        }   
         await new Promise(r => setTimeout(r, 2000));
-        
         for (let i = text.length; i >= 0; i--) {
             element.placeholder = text.substring(0, i);
             await new Promise(r => setTimeout(r, 30));
@@ -54,6 +85,8 @@ async function typeWriterEffect(element, texts) {
         await new Promise(r => setTimeout(r, 500));
     }
 }
+
+
 
 
 function generateId() {
@@ -135,7 +168,7 @@ document.addEventListener('DOMContentLoaded', () => {
     loadCurrentChat();
     autoResizeTextarea();
     
-    typeWriterEffect(messageInput, PLACEHOLDERS);
+    typeWriterEffect(messageInput, getCurrentPlaceholders);
 });
 
 function setupEventListeners() {
@@ -185,7 +218,6 @@ function setupEventListeners() {
         imageInput.value = '';
     });
     
-    // evento para pegar imágenes con Ctrl+V
     document.addEventListener('paste', (e) => {
         const items = e.clipboardData?.items;
         if (!items) return;
@@ -197,21 +229,18 @@ function setupEventListeners() {
                 if (!file) continue;
                 
                 processImageFile(file);
-                break; // solo procesar la primera imagen
+                break; 
             }
         }
     });
 }
 
-// Función para procesar y comprimir imágenes
 async function processImageFile(file) {
-    // validar que sea imagen
     if (!file.type.startsWith('image/')) {
         alert('eso no es una imagen pa');
         return;
     }
-    
-    // checar que no sea muy pesada (máximo inicial 10MB)
+
     if (file.size > 10 * 1024 * 1024) {
         alert('imagen muy pesada (max 10MB)');
         return;
@@ -229,7 +258,7 @@ async function processImageFile(file) {
             // Redimensionar si es muy grande
             let width = img.width;
             let height = img.height;
-            const maxDimension = 1920; // máximo 1920px en cualquier lado
+            const maxDimension = 1920; 
             
             if (width > maxDimension || height > maxDimension) {
                 const ratio = Math.min(maxDimension / width, maxDimension / height);
@@ -237,8 +266,7 @@ async function processImageFile(file) {
                 height = Math.floor(height * ratio);
                 console.log(`🔽 Redimensionando imagen de ${img.width}x${img.height} a ${width}x${height}`);
             }
-            
-            // Crear canvas para comprimir
+
             const canvas = document.createElement('canvas');
             canvas.width = width;
             canvas.height = height;
@@ -251,8 +279,7 @@ async function processImageFile(file) {
                     alert('error procesando imagen');
                     return;
                 }
-                
-                // Verificar tamaño después de comprimir
+
                 const compressedSizeKB = blob.size / 1024;
                 console.log(`📦 Imagen comprimida: ${compressedSizeKB.toFixed(0)}KB`);
                 
@@ -260,8 +287,7 @@ async function processImageFile(file) {
                     alert('imagen muy pesada incluso después de comprimir (max 5MB)');
                     return;
                 }
-                
-                // Convertir blob a base64
+
                 const blobReader = new FileReader();
                 blobReader.onload = (event) => {
                     const base64String = event.target.result;
@@ -278,7 +304,7 @@ async function processImageFile(file) {
                     console.log('✅ Imagen lista para enviar');
                 };
                 blobReader.readAsDataURL(blob);
-            }, 'image/jpeg', 0.85); // JPEG con calidad 85%
+            }, 'image/jpeg', 0.85); 
         };
         
         img.onerror = () => {
@@ -497,18 +523,17 @@ function updateModelSelect() {
         'gemini-2.5-flash',                    // Primera opción: gemini-2.5-flash (mejor)
         'gemini-2.5-flash-preview-09-2025',    // Segunda: preview full
         'gemini-2.5-flash-lite',               // Tercera: lite
-        'gemini-2.5-flash-lite-preview-09-2025', // Cuarta: preview lite
+        'gemini-2.5-flash-lite-preview-09-2025', // cuarta: el más burro de todos
     ];
     
     let selectedModel = null;
     
     // Buscar el primer modelo que coincida exactamente con nuestras preferencias
     for (const preference of modelPreferences) {
-        // Primero intenta match exacto
         let found = models.find(m => m === preference || m.trim() === preference.trim());
         if (found) {
             selectedModel = found;
-            console.log(`✅ Modelo seleccionado (exacto): ${getShortModelName(selectedModel)}`);
+            console.log(` Modelo seleccionado (exacto): ${getShortModelName(selectedModel)}`);
             break;
         }
     }
@@ -524,8 +549,7 @@ function updateModelSelect() {
             }
         }
     }
-    
-    // Si no encuentra ninguno preferido, usa el primero disponible
+
     if (!selectedModel) {
         selectedModel = models[0];
         console.log(`⚠️  Usando modelo disponible: ${getShortModelName(selectedModel)}`);
@@ -538,6 +562,12 @@ async function sendMessage() {
     if (isLoading) return;
     const message = messageInput.value.trim();
     if (!message && !selectedImageBase64) return;
+    
+    // Mark first message as sent to switch placeholders
+    if (!firstMessageSent) {
+        firstMessageSent = true;
+        messageInput.placeholder = ""; // Reset visually for instant change
+    }
     
     const chat = getCurrentChat();
     const imageToSend = selectedImageBase64;
@@ -608,7 +638,7 @@ async function sendMessage() {
         removeLoadingMessage(loadingId);
         console.error('Error al conectar:', error);
         
-        // mensaje más descriptivo según el error
+
         if (error.message.includes('Failed to fetch') || error.name === 'TypeError') {
             addSystemMessage('❌ No se pudo conectar al servidor. Verifica que el backend esté corriendo.');
         } else if (error.message.includes('NetworkError')) {

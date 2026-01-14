@@ -19,7 +19,7 @@ COOKIE_ASCII = r"""
    ╚═════╝ ╚═════╝  ╚═════╝ ╚═╝  ╚═╝╚═╝╚══════╝╚═╝  ╚═╝╚═╝
 """
 
-SUBTITLE = "                    Ez-Configurator v1.0"
+SUBTITLE = "                    Ez-Configurator"
 
 def clear_screen():
     os.system('cls' if platform.system() == 'Windows' else 'clear')
@@ -88,55 +88,12 @@ def configure_gemini():
     
     return keys
 
-def configure_openai():
-    print("\n🤖 OPENAI API KEYS")
-    print("━" * 50)
-    print("Get your keys at: https://platform.openai.com/api-keys\n")
-    
-    keys = []
-    key_num = 1
-    
-    while True:
-        key = ask_question(f"OpenAI API Key #{key_num}", required=(key_num == 1))
-        if not key:
-            break
-        keys.append(key)
-        key_num += 1
-        
-        if not ask_yes_no("Add another OpenAI key?", default=False):
-            break
-    
-    return keys
-
-def configure_claude():
-    print("\n🧠 CLAUDE API KEYS")
-    print("━" * 50)
-    print("Get your keys at: https://console.anthropic.com/\n")
-    
-    keys = []
-    key_num = 1
-    
-    while True:
-        key = ask_question(f"Claude API Key #{key_num}", required=(key_num == 1))
-        if not key:
-            break
-        keys.append(key)
-        key_num += 1
-        
-        if not ask_yes_no("Add another Claude key?", default=False):
-            break
-    
-    return keys
-
-def configure_models(gemini_keys, openai_keys, claude_keys):
+def configure_models(gemini_keys):
     print("\n🤖 AI MODELS CONFIGURATION")
     print("━" * 50)
-    print("⚠️  IMPORTANT: Enter the FULL model name exactly as the API expects it\n")
+    print("⚠️  IMPORTANT: Enter the FULL Gemini model name exactly as the API expects it\n")
     
     gemini_models = []
-    openai_models = []
-    claude_models = []
-    
     # Gemini models
     if gemini_keys:
         print("🔵 Gemini Models")
@@ -149,31 +106,7 @@ def configure_models(gemini_keys, openai_keys, claude_keys):
         gemini_models = [m.strip() for m in models_input.split(',') if m.strip()]
         print(f"✅ {len(gemini_models)} Gemini model(s) configured")
     
-    # OpenAI models
-    if openai_keys:
-        print("\n🟢 OpenAI Models")
-        print("Examples: gpt-4o, gpt-4o-mini, gpt-4-turbo")
-        models_input = ask_question(
-            "Enter OpenAI model names (comma-separated)", 
-            default="gpt-4o",
-            required=True
-        )
-        openai_models = [m.strip() for m in models_input.split(',') if m.strip()]
-        print(f"✅ {len(openai_models)} OpenAI model(s) configured")
-    
-    # Claude models
-    if claude_keys:
-        print("\n🟣 Claude Models")
-        print("Examples: claude-3-5-sonnet-20241022, claude-3-5-haiku-20241022")
-        models_input = ask_question(
-            "Enter Claude model names (comma-separated)", 
-            default="claude-3-5-sonnet-20241022",
-            required=True
-        )
-        claude_models = [m.strip() for m in models_input.split(',') if m.strip()]
-        print(f"✅ {len(claude_models)} Claude model(s) configured")
-    
-    return gemini_models, openai_models, claude_models
+    return gemini_models
 
 def configurar_rate_limites_porfavoryonotendriaqueestarhaciendoesto():
     print("\n⏱  RATE LIMITING")
@@ -547,17 +480,6 @@ def generate_env_file(config):
             env_content += f"GEMINI_API_KEY_{i}={key}\n"
         env_content += "\n"
     
-    if config['openai_keys']:
-        env_content += "#  OPENAI API KEYS \n"
-        for i, key in enumerate(config['openai_keys'], 1):
-            env_content += f"OPENAI_API_KEY_{i}={key}\n"
-        env_content += "\n"
-    
-    if config['claude_keys']:
-        env_content += "# CLAUDE API KEYS\n"
-        for i, key in enumerate(config['claude_keys'], 1):
-            env_content += f"CLAUDE_API_KEY_{i}={key}\n"
-        env_content += "\n"
     
     env_content += "# RATE LIMITING \n"
     env_content += f"MAX_MESSAGES={config['max_messages']}\n"
@@ -570,10 +492,7 @@ def generate_env_file(config):
     env_content += "#  MODELS \n"
     if config.get('gemini_models'):
         env_content += f"GEMINI_MODELS={','.join(config['gemini_models'])}\n"
-    if config.get('openai_models'):
-        env_content += f"OPENAI_MODELS={','.join(config['openai_models'])}\n"
-    if config.get('claude_models'):
-        env_content += f"CLAUDE_MODELS={','.join(config['claude_models'])}\n"
+
     env_content += "\n"
     
     env_content += "# System prompt (leave empty to use default Flavortown prompt)\n"
@@ -697,29 +616,22 @@ def main():
     
     print("\n AI PROVIDERS SELECTION")
     print("━" * 50)
-    print("Choose which AI providers you want to use:\n")
+    print("CookieAI will be configured to use Gemini as the sole provider.\n")
     
     use_gemini = ask_yes_no("Configure Gemini (Google)?", default=True)
-    use_openai = ask_yes_no("Configure OpenAI?", default=False)
-    use_claude = ask_yes_no("Configure Claude (Anthropic)?", default=False)
-    # nadie va a usar claude pero bueno
-    if not any([use_gemini, use_openai, use_claude]):
-        print("\n You need to select at least one AI provider!")
+    if not use_gemini:
+        print("\n You need to use Gemini as the provider. Exiting.")
         sys.exit(1)
 
     config = {}
     
     config['gemini_keys'] = configure_gemini() if use_gemini else []
-    config['openai_keys'] = configure_openai() if use_openai else []
-    config['claude_keys'] = configure_claude() if use_claude else []
     
-    if not any([config['gemini_keys'], config['openai_keys'], config['claude_keys']]):
-        print("\n❌ You need to configure at least one API key!")
+    if not config['gemini_keys']:
+        print("\n❌ You need to configure at least one Gemini API key!")
         sys.exit(1)
     
-    config['gemini_models'], config['openai_models'], config['claude_models'] = configure_models(
-        config['gemini_keys'], config['openai_keys'], config['claude_keys']
-    )
+    config['gemini_models'] = configure_models(config['gemini_keys'])
 
     config['max_messages'], config['time_window'] = configurar_rate_limites_porfavoryonotendriaqueestarhaciendoesto()
 
@@ -734,12 +646,6 @@ def main():
     print(f"Gemini keys: {len(config['gemini_keys'])}")
     if config['gemini_models']:
         print(f"  Models: {', '.join(config['gemini_models'])}")
-    print(f"OpenAI keys: {len(config['openai_keys'])}")
-    if config['openai_models']:
-        print(f"  Models: {', '.join(config['openai_models'])}")
-    print(f"Claude keys: {len(config['claude_keys'])}")
-    if config['claude_models']:
-        print(f"  Models: {', '.join(config['claude_models'])}")
     print(f"Rate limit: {config['max_messages']} messages per {config['time_window']}s")
     print(f"Backend port: {config['backend_port']}")
     print(f"Frontend port: {config['frontend_port']}")

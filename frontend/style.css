@@ -675,6 +675,7 @@ header {
     display: flex;
     align-items: center;
     justify-content: center
+}
 
 .attach-btn:hover {
     color: var(--blue-primary);

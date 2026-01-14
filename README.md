@@ -1,12 +1,11 @@
 # 🍪 CookieAI
 
-una IA copada para chatear, con varios modelos y providers. 
+una IA copada para chatear, con varios modelos
 
 ## que tiene esto
 
 - **frontend minimalista**: Re fachero
 - **backend seguro**: rate limiting, fallback de API keys, protecciones basicas
-- **multi-provider**: soporta gemini, openai y claude
 - **memoria conversacional**: se acuerda de lo que hablaste
 - **sin login**: directo al chat, sin boludeces
 - **ez-configurator**: setup interactivo super facil
@@ -67,12 +66,6 @@ despues edita el archivo `.env` y pone tus keys:
 # pone tus keys acá (pone todas las que tengas para el fallback)
 GEMINI_API_KEY_1 2 3 4 hasta el infinito 
 
-
-# si tenes de openai tambien
-OPENAI_API_KEY_1=
-
-# y si tenes de claude
-CLAUDE_API_KEY_1=
 ```
 
 
@@ -82,8 +75,6 @@ en el `.env` tambien podes cambiar que modelos aparecen:
 
 ```env
 GEMINI_MODELS=gemini-2.5-flash,gemini-2.5-flash-lite
-OPENAI_MODELS=gpt-4o-mini
-CLAUDE_MODELS=claude-3-5-haiku-20241022
 ```
 
 ### 5. ajusta el rate limiting (opcional)
@@ -191,16 +182,6 @@ README.md              # esta cosa que estás leyendo
 
 la IA se acuerda de la conversacion. usa un `session_id` que se genera automaticamente en el frontend. cada sesion tiene su propio historial.
 
-### multi-provider
-
-podes elegir entre
-open AI
-gemini
-y Anthropic
-aunque los modelos que más recomiendo son gemini 2.5 flash lite/flash nomas, gpt 5 nano, 4.1 mini y claude haiku 4.5 si queres algo más fachero
-para programar
-
-si una key falla, automaticamente prueba con la siguiente.
 
 ## troubleshooting
 

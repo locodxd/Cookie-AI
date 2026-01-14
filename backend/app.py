@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 import json
 from pathlib import Path
 
-from ai_providers import GeminiProvider, OpenAIProvider, ClaudeProvider
+from ai_providers import GeminiProvider
 
 load_dotenv()
 app = Flask(__name__)
@@ -22,11 +22,9 @@ rate_limit_storage = {}
 
 conversation_history = {}
 
-# amigo igual esto no sé si se llaman asi, esto es un #TODO porque realmente solo probé gemini
+# Only Gemini provider is supported (OpenAI/Claude removed)
 providers = {
-    'gemini': GeminiProvider(),
-    'openai': OpenAIProvider(),
-    'claude': ClaudeProvider()
+    'gemini': GeminiProvider()
 }
 
 
@@ -60,8 +58,6 @@ def conseguir_conversation_history(session_id, max_messages=10):
         conversation_history[session_id] = []
     
     return conversation_history[session_id][-max_messages:]
-
-
 def añadir_to_history(session_id, role, content):
     if session_id not in conversation_history:
         conversation_history[session_id] = []
@@ -94,7 +90,6 @@ def chat():
         model_name = data.get('model')
         session_id = data.get('session_id', 'default')
         
-        # debug imagen
         if image_data:
             print(f"📸 Imagen recibida: {len(image_data)} chars de base64")
         else:
