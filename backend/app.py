@@ -11,7 +11,7 @@ from ai_providers import GeminiProvider
 
 load_dotenv()
 app = Flask(__name__)
-app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max request size
+app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100MB max request size (video support)
 CORS(app)
 # esto se puede cambiar en el env pero lo dejo aca hardcoded pq si
 MAX_MESSAGES = int(os.getenv('MAX_MESSAGES', 5))
@@ -83,17 +83,29 @@ def chat():
                 'wait_time': wait_time
             }), 429
         
-        data = request.json
-        user_message = data.get('message', '').strip()
-        image_data = data.get('image')
-        provider_name = data.get('provider', 'gemini').lower()
-        model_name = data.get('model')
-        session_id = data.get('session_id', 'default')
+        # Manejo de JSON 
+        if request.is_json:
+            data = request.json
+            user_message = data.get('message', '').strip()
+            image_data = data.get('image')
+            provider_name = data.get('provider', 'gemini').lower()
+            model_name = data.get('model')
+            session_id = data.get('session_id', 'default')
+            video_file = None
+        else:
+            user_message = request.form.get('message', '').strip()
+            image_data = None
+            provider_name = request.form.get('provider', 'gemini').lower()
+            model_name = request.form.get('model')
+            session_id = request.form.get('session_id', 'default')
+            video_file = request.files.get('video')
         
         if image_data:
             print(f"📸 Imagen recibida: {len(image_data)} chars de base64")
+        elif video_file:
+            print(f"🎥 Video recibido: {video_file.filename} ({video_file.content_length / 1024 / 1024:.2f}MB)")
         else:
-            print("📭 No se recibió imagen")
+            print("📭 Ni imagen ni video")
         
         # algunas validaciones basicas
         if not user_message and not image_data:
@@ -102,13 +114,28 @@ def chat():
             return jsonify({'error': 'mensaje muy largo, corta un toque'}), 400
         if provider_name not in providers:
             return jsonify({'error': 'ese provider no existe brother'}), 400
-        añadir_to_history(session_id, 'user', user_message)
-        history = conseguir_conversation_history(session_id)
-        provider = providers[provider_name]
-        response = provider.generate_response(user_message, model_name, history, image_data=image_data)
-        if response.get('error'):
-            return jsonify(response), 500
-        añadir_to_history(session_id, 'assistant', response['message'])
+        # Guardar video temporalmente si existe
+        video_path = None
+        if video_file:
+            import tempfile
+            temp_dir = tempfile.gettempdir()
+            video_path = os.path.join(temp_dir, video_file.filename)
+            video_file.save(video_path)
+            print(f"   ✅ Video guardado en: {video_path}")
+        
+        try:
+            añadir_to_history(session_id, 'user', user_message)
+            history = conseguir_conversation_history(session_id)
+            provider = providers[provider_name]
+            response = provider.generate_response(user_message, model_name, history, image_data=image_data, video_path=video_path)
+            if response.get('error'):
+                return jsonify(response), 500
+            añadir_to_history(session_id, 'assistant', response['message'])
+        finally:
+            # Limpiar archivo temporal
+            if video_path and os.path.exists(video_path):
+                os.remove(video_path)
+                print(f"   🗑️  Video temporal eliminado")
         
         return jsonify(response), 200
     except Exception as e:

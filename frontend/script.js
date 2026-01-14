@@ -1,7 +1,6 @@
 // amigo este archivo fue un desastre de hacerlo, es un frankestein de codigo
 // asi que perdon por el desorden
 
-
 const API_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' 
     ? 'http://localhost:5000/api' 
     : '/api';
@@ -86,13 +85,9 @@ async function typeWriterEffect(element, getTexts) {
     }
 }
 
-
-
-
 function generateId() {
     return 'chat_' + Math.random().toString(36).substr(2, 9) + '_' + Date.now();
 }
-
 // funcion para parsear un markdown basico ;3
 function parseMarkdown(text) {
     let clean = text
@@ -119,8 +114,6 @@ function escapeHtml(text) {
     return div.innerHTML.replace(/\n/g, '<br>');
 }
 
-// este el init del script
-
 let chats = JSON.parse(localStorage.getItem('cookieai_chats')) || [];
 let currentChatId = localStorage.getItem('cookieai_current_chat');
 let currentProvider = 'gemini';
@@ -129,8 +122,7 @@ let availableModels = {};
 let isLoading = false;
 let selectedImageBase64 = null; // esto añade soporte al adjuntar imagenes, esto 
 // está siendo testeado con Gemini Vision por ahora
-
-// crear chat inicial si no hay ninguno
+let selectedVideoFile = null; // soporte para videos (max 30s / 50MB)
 if (chats.length === 0) {
     const newChat = {
         id: generateId(),
@@ -156,6 +148,8 @@ const toggleSidebarBtn = document.getElementById('toggle-sidebar-btn');
 const newChatBtn = document.getElementById('new-chat-btn');
 const chatsList = document.getElementById('chats-list');
 const imageInput = document.getElementById('image-input');
+const videoInput = document.getElementById('video-input');
+const attachInput = document.getElementById('attach-input');
 const attachBtn = document.getElementById('attach-btn');
 const imagePreview = document.getElementById('image-preview');
 const imagePreviewContainer = document.getElementById('image-preview-container');
@@ -203,7 +197,53 @@ function setupEventListeners() {
     
     messageInput.addEventListener('input', autoResizeTextarea);
     
-    attachBtn.addEventListener('click', () => imageInput.click());
+    attachBtn.addEventListener('click', () => attachInput.click());
+    
+    // Attach input - auto-detect imagen o video
+    attachInput.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        
+        if (file.type.startsWith('video/')) {
+            // Validar y procesar video
+            if (file.size > 50 * 1024 * 1024) {
+                alert('🎥 Video muy pesado (máximo 50MB)');
+                attachInput.value = '';
+                return;
+            }
+            
+            const video = document.createElement('video');
+            video.preload = 'metadata';
+            video.onloadedmetadata = () => {
+                window.URL.revokeObjectURL(video.src);
+                if (video.duration > 30) {
+                    alert('🎥 Video muy largo (máximo 30 segundos)');
+                    attachInput.value = '';
+                    return;
+                }
+                selectedVideoFile = file;
+                
+                // Extraer primer frame como thumbnail
+                const canvas = document.createElement('canvas');
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(video, 0, 0);
+                imagePreview.src = canvas.toDataURL();
+                imagePreviewContainer.style.display = 'block';
+                
+                console.log(`🎥 Video listo: ${file.name} (${(file.size / 1024 / 1024).toFixed(2)}MB, ${Math.round(video.duration)}s)`);
+            };
+            video.src = URL.createObjectURL(file);
+        } else if (file.type.startsWith('image/')) {
+            // Procesar imagen
+            processImageFile(file);
+        } else {
+            alert('Archivo no soportado (imagen o video)');
+        }
+        
+        attachInput.value = '';
+    });
     
     imageInput.addEventListener('change', (e) => {
         const file = e.target.files[0];
@@ -214,8 +254,42 @@ function setupEventListeners() {
     
     removeImageBtn.addEventListener('click', () => {
         selectedImageBase64 = null;
+        selectedVideoFile = null;
         imagePreviewContainer.style.display = 'none';
         imageInput.value = '';
+        videoInput.value = '';
+        attachInput.value = '';
+    });
+    
+    // Video file input handler
+    videoInput.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        
+        // Validar tamaño (max 50MB)
+        if (file.size > 50 * 1024 * 1024) {
+            alert('🎥 Video muy pesado (máximo 50MB)');
+            videoInput.value = '';
+            return;
+        }
+        
+        // Validar duración (max 30s)
+        const video = document.createElement('video');
+        video.preload = 'metadata';
+        
+        video.onloadedmetadata = () => {
+            window.URL.revokeObjectURL(video.src);
+            if (video.duration > 30) {
+                alert('🎥 Video muy largo (máximo 30 segundos)');
+                videoInput.value = '';
+                return;
+            }
+            
+            selectedVideoFile = file;
+            console.log(`🎥 Video listo: ${file.name} (${(file.size / 1024 / 1024).toFixed(2)}MB, ${Math.round(video.duration)}s)`);
+        };
+        
+        video.src = URL.createObjectURL(file);
     });
     
     document.addEventListener('paste', (e) => {
@@ -230,6 +304,71 @@ function setupEventListeners() {
                 
                 processImageFile(file);
                 break; 
+            }
+        }
+    });
+    
+    // Drag and drop para imágenes y videos
+    document.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        chatContainer.style.opacity = '0.7';
+    });
+    
+    document.addEventListener('dragleave', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        chatContainer.style.opacity = '1';
+    });
+    
+    document.addEventListener('drop', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        chatContainer.style.opacity = '1';
+        
+        const files = e.dataTransfer?.files;
+        if (!files) return;
+        
+        for (let file of files) {
+            // Detectar si es video o imagen
+            if (file.type.startsWith('video/')) {
+                console.log('🎥 Video detectado por drag & drop');
+                
+                // Validar tamaño
+                if (file.size > 50 * 1024 * 1024) {
+                    alert('🎥 Video muy pesado (máximo 50MB)');
+                    return;
+                }
+                
+                // Validar duración
+                const video = document.createElement('video');
+                video.preload = 'metadata';
+                video.onloadedmetadata = () => {
+                    window.URL.revokeObjectURL(video.src);
+                    if (video.duration > 30) {
+                        alert('🎥 Video muy largo (máximo 30 segundos)');
+                        return;
+                    }
+                    
+                    selectedVideoFile = file;
+                    
+                    // Extraer primer frame como thumbnail
+                    const canvas = document.createElement('canvas');
+                    canvas.width = video.videoWidth;
+                    canvas.height = video.videoHeight;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(video, 0, 0);
+                    imagePreview.src = canvas.toDataURL();
+                    imagePreviewContainer.style.display = 'block';
+                    
+                    console.log(`🎥 Video listo (drag): ${file.name} (${(file.size / 1024 / 1024).toFixed(2)}MB, ${Math.round(video.duration)}s)`);
+                };
+                video.src = URL.createObjectURL(file);
+                break;
+            } else if (file.type.startsWith('image/')) {
+                console.log('📸 Imagen detectada por drag & drop');
+                processImageFile(file);
+                break;
             }
         }
     });
@@ -255,7 +394,6 @@ async function processImageFile(file) {
         };
         
         img.onload = () => {
-            // Redimensionar si es muy grande
             let width = img.width;
             let height = img.height;
             const maxDimension = 1920; 
@@ -317,9 +455,6 @@ async function processImageFile(file) {
         alert('no se pudo procesar la imagen');
     }
 }
-
-
-
 function createNewChat() {
     const newChat = {
         id: generateId(),
@@ -576,11 +711,13 @@ async function sendMessage() {
     messageInput.value = '';
     autoResizeTextarea();
     
-    // limpiar imagen despues de un poquito para que no se bugee
+    // limpiar imagen/video despues de un poquito para que no se bugee
     setTimeout(() => {
         selectedImageBase64 = null;
+        selectedVideoFile = null;
         imagePreviewContainer.style.display = 'none';
         imageInput.value = '';
+        attachInput.value = '';
     }, 100);
     
     const welcomeMsg = chatContainer.querySelector('.welcome-message');
@@ -604,25 +741,61 @@ async function sendMessage() {
             console.log('📸 Enviando imagen:', imageToSend.length, 'chars de base64');
         }
         
-        const requestBody = {
-            message: message,
-            image: imageToSend || null, // base64 puro pal server
-            provider: currentProvider,
-            model: currentModel,
-            session_id: chat.id
-        };
+        let response;
         
-        const response = await fetch(`${API_URL}/chat`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(requestBody)
-        });
-        const data = await response.json();
+        // Si hay video, usar FormData; si no, usar JSON
+        if (selectedVideoFile) {
+            const formData = new FormData();
+            formData.append('message', message);
+            formData.append('video', selectedVideoFile);
+            formData.append('provider', currentProvider);
+            formData.append('model', currentModel);
+            formData.append('session_id', chat.id);
+            
+            console.log('📤 Enviando video al servidor...');
+            response = await fetch(`${API_URL}/chat`, {
+                method: 'POST',
+                body: formData
+            });
+            
+            selectedVideoFile = null;
+            videoInput.value = '';
+        } else {
+            const requestBody = {
+                message: message,
+                image: imageToSend || null, // base64 puro pal server
+                provider: currentProvider,
+                model: currentModel,
+                session_id: chat.id
+            };
+            
+            response = await fetch(`${API_URL}/chat`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(requestBody)
+            });
+        }
         removeLoadingMessage(loadingId);
+        
+        // Check content type to avoid parsing HTML as JSON
+        const contentType = response.headers.get('content-type');
+        let data;
+        
+        if (contentType && contentType.includes('application/json')) {
+            data = await response.json();
+        } else {
+            // Server returned HTML (error page) instead of JSON
+            const text = await response.text();
+            console.error('Server returned non-JSON response:', text.substring(0, 200));
+            addSystemMessage(`Error ${response.status}: Video or file might be too large. Max 50MB for videos.`);
+            return;
+        }
         
         if (response.status === 429) {
             showRateLimitWarning(data.wait_time);
             addSystemMessage(`Hold on, wait ${data.wait_time}s`);
+        } else if (!response.ok) {
+            addSystemMessage(`Error ${response.status}: ${data.error || 'Server error'}`);
         } else if (data.error) {
             addSystemMessage(`Error: ${data.error}`);
         } else {
