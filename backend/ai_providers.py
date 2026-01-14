@@ -58,16 +58,13 @@ Always answer questions in the context of Flavortown. When users ask about cooki
 For details, direct them to #flavortown-help on Hack Club Slack."""
     
     def _get_next_key(self):
-        """sistema de fallback, si una key falla probamos con la siguiente"""
         if not self.api_keys:
             return None
-        
         key = self.api_keys[self.current_key_index]
         self.current_key_index = (self.current_key_index + 1) % len(self.api_keys)
         return key
     
     def generate_response(self, message, model=None, history=None, image_data=None, video_path=None):
-        """genera una respuesta con gemini (soporta imagen y video)"""
         if not self.api_keys:
             return {'error': 'no hay keys de gemini configuradas'}
         
@@ -135,12 +132,12 @@ For details, direct them to #flavortown-help on Hack Club Slack."""
                     
                     if video_path:
                         try:
-                            print(f"🎥 Subiendo video a Gemini: {video_path}")
+                            print(f" Subiendo video a Gemini: {video_path}")
                             video_file = genai.upload_file(path=video_path, mime_type="video/mp4")
                             parts.append(video_file)
-                            print(f"✅ Video subido exitosamente: {video_file.name}")
+                            print(f" Video subido exitosamente: {video_file.name}")
                         except Exception as video_error:
-                            print(f"❌ Error subiendo video: {video_error}")
+                            print(f" Error subiendo video: {video_error}")
                             import traceback
                             traceback.print_exc()
                             return {'error': f'No se pudo procesar el video: {str(video_error)[:100]}'}
@@ -174,7 +171,7 @@ For details, direct them to #flavortown-help on Hack Club Slack."""
                     
                 except Exception as e:
                     error_str = str(e).lower()
-                    print(f"❌ Error con {try_model} (key {attempt + 1}): {error_str[:100]}")
+                    print(f" Error con {try_model} (key {attempt + 1}): {error_str[:100]}")
                     
                     if image_data and ('no soporta' in error_str or 'not support' in error_str or 'vision' in error_str):
                         print(f"   ⚠️  {try_model} no soporta imágenes, probando con otro...")

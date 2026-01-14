@@ -85,7 +85,7 @@ async function typeWriterEffect(element, getTexts) {
     }
 }
 
-function generateId() {
+function Melapela() {
     return 'chat_' + Math.random().toString(36).substr(2, 9) + '_' + Date.now();
 }
 // funcion para parsear un markdown basico ;3
@@ -122,10 +122,10 @@ let availableModels = {};
 let isLoading = false;
 let selectedImageBase64 = null; // esto añade soporte al adjuntar imagenes, esto 
 // está siendo testeado con Gemini Vision por ahora
-let selectedVideoFile = null; // soporte para videos (max 30s / 50MB)
+let selectedVideoFile = null; // esto igual está en otro lugar pero ya fue lo dejo todo hecho mr 
 if (chats.length === 0) {
     const newChat = {
-        id: generateId(),
+        id: Melapela(),
         title: 'New chat',
         messages: [],
         createdAt: Date.now()
@@ -156,7 +156,7 @@ const imagePreviewContainer = document.getElementById('image-preview-container')
 const removeImageBtn = document.getElementById('remove-image');
 // nunca mas voy a escribir const luego de esto
 document.addEventListener('DOMContentLoaded', () => {
-    loadModels();
+    LoadearModelosXD();
     setupEventListeners();
     renderChatsList();
     loadCurrentChat();
@@ -164,7 +164,6 @@ document.addEventListener('DOMContentLoaded', () => {
     
     typeWriterEffect(messageInput, getCurrentPlaceholders);
 });
-
 function setupEventListeners() {
     sendBtn.addEventListener('click', sendMessage);
     messageInput.addEventListener('keydown', (e) => {
@@ -182,24 +181,18 @@ function setupEventListeners() {
     modelSelect.addEventListener('change', (e) => {
         currentModel = e.target.value;
     });
-
-    // si el loco clickea el selector y no hay modelos, intentamos cargar de nuevo
     modelSelect.addEventListener('click', () => {
         if (!availableModels[currentProvider] || availableModels[currentProvider].length === 0) {
             console.log("no hay modelos, cargando al clickear...");
-            loadModels(2);
+            LoadearModelosXD(2);
         }
     });
     
     clearBtn.addEventListener('click', clearChat);
     toggleSidebarBtn.addEventListener('click', toggleSidebar);
     newChatBtn.addEventListener('click', createNewChat);
-    
     messageInput.addEventListener('input', autoResizeTextarea);
-    
     attachBtn.addEventListener('click', () => attachInput.click());
-    
-    // Attach input - auto-detect imagen o video
     attachInput.addEventListener('change', (e) => {
         const file = e.target.files[0];
         if (!file) return;
@@ -222,8 +215,6 @@ function setupEventListeners() {
                     return;
                 }
                 selectedVideoFile = file;
-                
-                // Extraer primer frame como thumbnail
                 const canvas = document.createElement('canvas');
                 canvas.width = video.videoWidth;
                 canvas.height = video.videoHeight;
@@ -236,7 +227,6 @@ function setupEventListeners() {
             };
             video.src = URL.createObjectURL(file);
         } else if (file.type.startsWith('image/')) {
-            // Procesar imagen
             processImageFile(file);
         } else {
             alert('Archivo no soportado (imagen o video)');
@@ -268,7 +258,7 @@ function setupEventListeners() {
         
         // Validar tamaño (max 50MB)
         if (file.size > 50 * 1024 * 1024) {
-            alert('🎥 Video muy pesado (máximo 50MB)');
+            alert(' Video muy pesado (máximo 50MB)');
             videoInput.value = '';
             return;
         }
@@ -280,7 +270,7 @@ function setupEventListeners() {
         video.onloadedmetadata = () => {
             window.URL.revokeObjectURL(video.src);
             if (video.duration > 30) {
-                alert('🎥 Video muy largo (máximo 30 segundos)');
+                alert(' Video muy largo (máximo 30 segundos)');
                 videoInput.value = '';
                 return;
             }
@@ -330,17 +320,12 @@ function setupEventListeners() {
         if (!files) return;
         
         for (let file of files) {
-            // Detectar si es video o imagen
             if (file.type.startsWith('video/')) {
                 console.log('🎥 Video detectado por drag & drop');
-                
-                // Validar tamaño
                 if (file.size > 50 * 1024 * 1024) {
                     alert('🎥 Video muy pesado (máximo 50MB)');
                     return;
                 }
-                
-                // Validar duración
                 const video = document.createElement('video');
                 video.preload = 'metadata';
                 video.onloadedmetadata = () => {
@@ -372,6 +357,43 @@ function setupEventListeners() {
             }
         }
     });
+
+    // initialize parallax after other listeners
+    initParallax();
+}
+
+/* Parallax background: gentle movement of square elements following the mouse */
+function initParallax() {
+    const container = document.getElementById('parallax-bg');
+    if (!container) return;
+
+    const squares = Array.from(container.querySelectorAll('.parallax-square'));
+    if (squares.length === 0) return;
+
+    let winW = window.innerWidth;
+    let winH = window.innerHeight;
+    let pointerX = 0;
+    let pointerY = 0;
+
+    function onMove(e) {
+        pointerX = (e.clientX / winW - 0.5);
+        pointerY = (e.clientY / winH - 0.5);
+    }
+
+    function animate() {
+        squares.forEach((sq) => {
+            const depth = parseFloat(sq.dataset.depth || '0.04');
+            const tx = -pointerX * depth * 120; // horizontal movement
+            const ty = -pointerY * depth * 80;  // vertical movement
+            const scale = 1 - depth * 0.06;
+            sq.style.transform = `translate3d(${tx.toFixed(2)}px, ${ty.toFixed(2)}px, 0) scale(${scale.toFixed(3)})`;
+        });
+        requestAnimationFrame(animate);
+    }
+
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('resize', () => { winW = window.innerWidth; winH = window.innerHeight; });
+    requestAnimationFrame(animate);
 }
 
 async function processImageFile(file) {
@@ -410,8 +432,7 @@ async function processImageFile(file) {
             canvas.height = height;
             const ctx = canvas.getContext('2d');
             ctx.drawImage(img, 0, 0, width, height);
-            
-            // Convertir a base64 con compresión
+        
             canvas.toBlob((blob) => {
                 if (!blob) {
                     alert('error procesando imagen');
@@ -457,7 +478,7 @@ async function processImageFile(file) {
 }
 function createNewChat() {
     const newChat = {
-        id: generateId(),
+        id: Melapela(),
         title: 'New chat',
         messages: [],
         createdAt: Date.now()
@@ -547,8 +568,8 @@ function loadCurrentChat() {
         chatContainer.innerHTML = `
             <div class="welcome-message">
                 <div class="welcome-icon">🍪</div>
-                <h2>Hey! I'm CookieAI</h2>
-                <p>what can I help you with?</p>
+                <h2>CookieAI</h2>
+                <p>Ask. Stupid. Questions</p>
             </div>
         `;
     } else {
@@ -577,9 +598,7 @@ function toggleSidebar() {
     sidebar.classList.toggle('hidden');
 }
 
-// Estas son las funciones principales del chat
-
-async function loadModels(retries = 5, delay = 1000) {
+async function LoadearModelosXD(retries = 5, delay = 1000) {
     try {
         console.log(`intentando cargar modelos... (intento ${6-retries})`);
         if (retries === 5) {
@@ -611,7 +630,7 @@ async function loadModels(retries = 5, delay = 1000) {
         if (retries > 0) {
             console.log(`Reintentando en ${delay}ms...`);
             await new Promise(resolve => setTimeout(resolve, delay)); 
-            return loadModels(retries - 1, delay * 1.5); // backoff exponencial
+            return LoadearModelosXD(retries - 1, delay * 1.5); // backoff exponencial
         }
         
         modelSelect.innerHTML = '<option value="">Error loading models</option>';
@@ -653,11 +672,11 @@ function updateModelSelect() {
         modelSelect.appendChild(option);
     });
     
-    // Orden de preferencia para seleccionar modelo por defecto
+
     const modelPreferences = [
         'gemini-2.5-flash',                    // Primera opción: gemini-2.5-flash (mejor)
-        'gemini-2.5-flash-preview-09-2025',    // Segunda: preview full
-        'gemini-2.5-flash-lite',               // Tercera: lite
+        'gemini-2.5-flash-preview-09-2025',    
+        'gemini-2.5-flash-lite',              
         'gemini-2.5-flash-lite-preview-09-2025', // cuarta: el más burro de todos
     ];
     
@@ -673,7 +692,6 @@ function updateModelSelect() {
         }
     }
     
-    // Si no encuentra match exacto, busca por substring (pero ordenado correctamente)
     if (!selectedModel) {
         for (const preference of modelPreferences) {
             let found = models.find(m => m.includes(preference));
@@ -698,10 +716,9 @@ async function sendMessage() {
     const message = messageInput.value.trim();
     if (!message && !selectedImageBase64) return;
     
-    // Mark first message as sent to switch placeholders
     if (!firstMessageSent) {
         firstMessageSent = true;
-        messageInput.placeholder = ""; // Reset visually for instant change
+        messageInput.placeholder = ""; 
     }
     
     const chat = getCurrentChat();
@@ -736,14 +753,13 @@ async function sendMessage() {
     const loadingId = addLoadingMessage();
     
     try {
-        // debug: ver si la imagen se está mandando
+
         if (imageToSend) {
             console.log('📸 Enviando imagen:', imageToSend.length, 'chars de base64');
         }
         
         let response;
         
-        // Si hay video, usar FormData; si no, usar JSON
         if (selectedVideoFile) {
             const formData = new FormData();
             formData.append('message', message);
@@ -777,14 +793,12 @@ async function sendMessage() {
         }
         removeLoadingMessage(loadingId);
         
-        // Check content type to avoid parsing HTML as JSON
         const contentType = response.headers.get('content-type');
         let data;
         
         if (contentType && contentType.includes('application/json')) {
             data = await response.json();
         } else {
-            // Server returned HTML (error page) instead of JSON
             const text = await response.text();
             console.error('Server returned non-JSON response:', text.substring(0, 200));
             addSystemMessage(`Error ${response.status}: Video or file might be too large. Max 50MB for videos.`);

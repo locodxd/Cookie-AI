@@ -71,7 +71,6 @@ def añadir_to_history(session_id, role, content):
     if len(conversation_history[session_id]) > 50:
         conversation_history[session_id] = conversation_history[session_id][-50:]
 
-
 @app.route('/api/chat', methods=['POST'])
 def chat():
     try:
@@ -106,15 +105,13 @@ def chat():
             print(f"🎥 Video recibido: {video_file.filename} ({video_file.content_length / 1024 / 1024:.2f}MB)")
         else:
             print("📭 Ni imagen ni video")
-        
-        # algunas validaciones basicas
+
         if not user_message and not image_data:
             return jsonify({'error': 'manda algo loco'}), 400
         if len(user_message) > 4000:
             return jsonify({'error': 'mensaje muy largo, corta un toque'}), 400
         if provider_name not in providers:
             return jsonify({'error': 'ese provider no existe brother'}), 400
-        # Guardar video temporalmente si existe
         video_path = None
         if video_file:
             import tempfile
