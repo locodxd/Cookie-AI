@@ -1,4 +1,5 @@
 import os
+import time
 from abc import ABC, abstractmethod
 import google.generativeai as genai
 from PIL import Image
@@ -30,7 +31,8 @@ class GeminiProvider(AIProvider):
             i += 1
         
         self.current_key_index = 0
-        self.models = os.getenv('GEMINI_MODELS', 'gemini-2.5-flash').split(',')
+        raw_models = os.getenv('GEMINI_MODELS', 'gemini-2.5-flash')
+        self.models = [m.strip() for m in raw_models.split(',') if m.strip()]
         system_prompt = os.getenv('SYSTEM_PROMPT')
         self.system_prompt = system_prompt or self._get_default_prompt()
     
@@ -83,7 +85,12 @@ For details, direct them to #flavortown-help on Hack Club Slack."""
                 try:
                     api_key = self._get_next_key()
                     genai.configure(api_key=api_key)
-                    model_instance = genai.GenerativeModel(model_name=try_model)
+                    
+                    # Usar system_instruction directamente en el modelo (más limpio)
+                    model_instance = genai.GenerativeModel(
+                        model_name=try_model,
+                        system_instruction=self.system_prompt
+                    )
                     
                     parts = []
                     if message:
@@ -133,9 +140,27 @@ For details, direct them to #flavortown-help on Hack Club Slack."""
                     if video_path:
                         try:
                             print(f" Subiendo video a Gemini: {video_path}")
-                            video_file = genai.upload_file(path=video_path, mime_type="video/mp4")
+                            # Dejamos que Gemini detecte el mime_type por la extensión
+                            video_file = genai.upload_file(path=video_path)
+                            print(f" Video subido: {video_file.name}. Procesando...")
+                            
+                            # Polling para esperar a que el video esté listo (ACTIVE)
+                            # Esto es CRUCIAL para videos en Gemini
+                            max_retries = 60 # 60 segundos de espera
+                            for _ in range(max_retries):
+                                file_info = genai.get_file(video_file.name)
+                                if file_info.state.name == "ACTIVE":
+                                    print(" ✅ Video listo (Estado: ACTIVE)")
+                                    break
+                                elif file_info.state.name == "FAILED":
+                                    raise ValueError("El procesamiento del video falló en los servidores de Gemini")
+                                
+                                time.sleep(1)
+                            else:
+                                raise ValueError("Timeout esperando el procesamiento del video")
+
                             parts.append(video_file)
-                            print(f" Video subido exitosamente: {video_file.name}")
+                            print(f" Video adjuntado exitosamente")
                         except Exception as video_error:
                             print(f" Error subiendo video: {video_error}")
                             import traceback
@@ -145,17 +170,31 @@ For details, direct them to #flavortown-help on Hack Club Slack."""
                     if not parts:
                         return {'error': 'mandá algo pa'}
                     
-                    full_history = []
-                    full_history.append({'role': 'user', 'parts': [self.system_prompt]})
-                    full_history.append({'role': 'model', 'parts': ['ok']})  
+                    # Formatear historial asegurando que alterne roles correctamente.
+                    # Como vamos a usar send_message(), el historial debe terminar en un mensaje del 'model'.
+                    formatted_history = []
                     if history:
-                        for msg in history[-5:]:
-                            role = 'user' if msg['role'] == 'user' else 'model'
-                            full_history.append({'role': role, 'parts': [msg['content']]})
+                        # Buscamos el último mensaje del asistente para cerrar el historial ahí
+                        last_model_idx = -1
+                        for i in range(len(history) - 1, -1, -1):
+                            if history[i]['role'] == 'assistant' or history[i]['role'] == 'model':
+                                last_model_idx = i
+                                break
+                        
+                        if last_model_idx != -1:
+                            # Incluimos hasta el último mensaje del modelo
+                            for msg in history[:last_model_idx + 1]:
+                                role = 'user' if msg['role'] == 'user' else 'model'
+                                # Evitar mensajes vacíos en el historial
+                                content = msg.get('content', '').strip()
+                                if content:
+                                    formatted_history.append({'role': role, 'parts': [content]})
                     
-                    full_history.append({'role': 'user', 'parts': parts})
+                    print(f" 📜 Historial formateado con {len(formatted_history)} mensajes")
                     
-                    response = model_instance.generate_content(full_history)
+                    # La forma oficial más estable es usar start_chat si hay historia
+                    chat_session = model_instance.start_chat(history=formatted_history)
+                    response = chat_session.send_message(parts)
 
                     if not response or not response.text:
                         raise ValueError("Respuesta vacía del modelo")
@@ -168,10 +207,14 @@ For details, direct them to #flavortown-help on Hack Club Slack."""
                         'model': try_model,
                         'provider': 'gemini'
                     }
-                    
                 except Exception as e:
                     error_str = str(e).lower()
-                    print(f" Error con {try_model} (key {attempt + 1}): {error_str[:100]}")
+                    print(f" ❌ Error con {try_model} (key {attempt + 1}): {str(e)}")
+                    
+                    # Si recibimos un 500 o error de servidor de Google, podríamos querer reintentar
+                    # pero si es un error de formato (400), mejor saltar o fallar.
+                    if "400" in error_str or "invalid" in error_str:
+                        return {'error': f'Error en el formato del mensaje: {str(e)}'}
                     
                     if image_data and ('no soporta' in error_str or 'not support' in error_str or 'vision' in error_str):
                         print(f"   ⚠️  {try_model} no soporta imágenes, probando con otro...")

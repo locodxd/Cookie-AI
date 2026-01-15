@@ -102,7 +102,7 @@ def chat():
         if image_data:
             print(f"📸 Imagen recibida: {len(image_data)} chars de base64")
         elif video_file:
-            print(f"🎥 Video recibido: {video_file.filename} ({video_file.content_length / 1024 / 1024:.2f}MB)")
+            print(f"🎥 Video recibido: {video_file.filename}")
         else:
             print("📭 Ni imagen ni video")
 
@@ -115,8 +115,11 @@ def chat():
         video_path = None
         if video_file:
             import tempfile
+            from werkzeug.utils import secure_filename
+            
             temp_dir = tempfile.gettempdir()
-            video_path = os.path.join(temp_dir, video_file.filename)
+            filename = secure_filename(video_file.filename) or f"video_{int(time.time())}.mp4"
+            video_path = os.path.join(temp_dir, filename)
             video_file.save(video_path)
             print(f"   ✅ Video guardado en: {video_path}")
         
@@ -136,8 +139,10 @@ def chat():
         
         return jsonify(response), 200
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         print(f"error en chat: {str(e)}")
-        return jsonify({'error': 'Something salio mal pa, intenta de nuevo'}), 500
+        return jsonify({'error': f'Algo salio mal pa: {str(e)}'}), 500
 @app.route('/api/models', methods=['GET'])
 def get_models():
     try:

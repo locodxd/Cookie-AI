@@ -673,6 +673,7 @@ function updateModelSelect() {
     });
     
 
+    // Orden de preferencia para seleccionar modelo por defecto
     const modelPreferences = [
         'gemini-2.5-flash',                    // Primera opción: gemini-2.5-flash (mejor)
         'gemini-2.5-flash-preview-09-2025',    
