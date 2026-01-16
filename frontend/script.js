@@ -36,7 +36,9 @@ const PLACEHOLDERS = [
     "Can I suggest new prizes?",
     "What's the difference between flash models?",
     "How many votes does each project get?",
+    "How do I redeem my cookies?",
     "Can I work on multiple projects?"
+
 ];
 const PLACEHOLDERS_AFTER_FIRST = [
     "Thank you",
@@ -58,10 +60,76 @@ const PLACEHOLDERS_AFTER_FIRST = [
     "That's helpful",
     "Thanks for the info!",
     "Great, thank you!",
-    "Thanks for explaining!"
+    "Thanks for explaining!",
+    "Very informative!",
+    "Learned something new!",
+    "Brilliant, thanks!",
+    "That was quick, thanks!",
+    "You're the best!"
 ];
 
 let firstMessageSent = false;
+const NEW_CHAT_RATE_BASE = 10;
+const NEW_CHAT_RATE_WINDOW = 60 * 60; 
+
+function _getNewChatTimestamps() {
+    try {
+        const raw = localStorage.getItem('cookieai_newchat_times') || '[]';
+        return JSON.parse(raw).map(t => Number(t)).filter(Boolean);
+    } catch (e) {
+        return [];
+    }
+}
+
+function _saveNewChatTimestamps(arr) {
+    localStorage.setItem('cookieai_newchat_times', JSON.stringify(arr));
+}
+
+function canCreateNewChat() {
+    const now = Date.now();
+    const windowMs = NEW_CHAT_RATE_WINDOW * 1000;
+    let times = _getNewChatTimestamps().filter(ts => now - ts < windowMs);
+    const count = times.length + 1; 
+
+    if (count <= 2) {
+        return { allowed: true, wait: 0, count };
+    }
+
+    const requiredWait = NEW_CHAT_RATE_BASE * (count - 2);
+    const last = times.length ? times[times.length - 1] : 0;
+    const elapsed = last ? Math.floor((now - last) / 1000) : Infinity;
+
+    if (elapsed < requiredWait) {
+        return { allowed: false, wait: requiredWait - elapsed, count };
+    }
+
+    return { allowed: true, wait: 0, count };
+}
+function recordNewChatCreation() {
+    const now = Date.now();
+    const windowMs = NEW_CHAT_RATE_WINDOW * 1000;
+    let times = _getNewChatTimestamps().filter(ts => now - ts < windowMs);
+    times.push(now);
+    _saveNewChatTimestamps(times);
+}
+
+function disableNewChatButtonFor(seconds) {
+    if (!newChatBtn) return;
+    const origText = newChatBtn.textContent;
+    newChatBtn.disabled = true;
+    let remaining = seconds;
+    newChatBtn.textContent = `+ new chat (${remaining}s)`;
+    const iv = setInterval(() => {
+        remaining -= 1;
+        if (remaining <= 0) {
+            clearInterval(iv);
+            newChatBtn.disabled = false;
+            newChatBtn.textContent = origText;
+        } else {
+            newChatBtn.textContent = `+ new chat (${remaining}s)`;
+        }
+    }, 1000);
+}
 
 function getCurrentPlaceholders() {
     return firstMessageSent ? PLACEHOLDERS_AFTER_FIRST : PLACEHOLDERS;
@@ -85,8 +153,63 @@ async function typeWriterEffect(element, getTexts) {
     }
 }
 
-function Melapela() {
+function generateId() {
     return 'chat_' + Math.random().toString(36).substr(2, 9) + '_' + Date.now();
+}
+
+function updateModeButtons() {
+    if (!modeThinkingBtn || !modeInstantBtn) return;
+    if (currentMode === 'instant') {
+        modeInstantBtn.classList.add('mode-active');
+        modeThinkingBtn.classList.remove('mode-active');
+    } else {
+        modeThinkingBtn.classList.add('mode-active');
+        modeInstantBtn.classList.remove('mode-active');
+    }
+}
+
+function getPreferredModelsForMode(mode) {
+    return mode === 'instant' ? MODEL_MODES.instant : MODEL_MODES.thinking;
+}
+
+function isModelRateLimited(model) {
+    if (!model) return false;
+    const entry = rateLimitedModels.get(model);
+    if (!entry) return false;
+    if (Date.now() - entry.since > entry.cooldownMs) {
+        rateLimitedModels.delete(model);
+        return false;
+    }
+    return true;
+}
+
+function markModelRateLimited(model, seconds = 30) {
+    if (!model) return;
+    const cooldownMs = Math.max(1, seconds) * 1000;
+    rateLimitedModels.set(model, { since: Date.now(), cooldownMs });
+}
+
+function pickModelForMode(models, mode) {
+    const preferred = getPreferredModelsForMode(mode);
+    for (const pref of preferred) {
+        const found = models.find(m => (m === pref || m.trim() === pref.trim()) && !isModelRateLimited(m));
+        if (found) return found;
+    }
+    for (const pref of preferred) {
+        const found = models.find(m => m.includes(pref) && !isModelRateLimited(m));
+        if (found) return found;
+    }
+    const firstOk = models.find(m => !isModelRateLimited(m));
+    return firstOk || null;
+}
+
+function setMode(mode, { silent = false } = {}) {
+    currentMode = mode === 'instant' ? 'instant' : 'thinking';
+    updateModeButtons();
+    const selected = updateModelSelect();
+    if (!selected && !silent) {
+        addSystemMessage('No models available for this mode.');
+    }
 }
 // funcion para parsear un markdown basico ;3
 function parseMarkdown(text) {
@@ -118,14 +241,28 @@ let chats = JSON.parse(localStorage.getItem('cookieai_chats')) || [];
 let currentChatId = localStorage.getItem('cookieai_current_chat');
 let currentProvider = 'gemini';
 let currentModel = null;
+let currentMode = 'thinking';
 let availableModels = {};
 let isLoading = false;
 let selectedImageBase64 = null; // esto añade soporte al adjuntar imagenes, esto 
 // está siendo testeado con Gemini Vision por ahora
 let selectedVideoFile = null; // esto igual está en otro lugar pero ya fue lo dejo todo hecho mr 
+
+const MODEL_MODES = {
+    thinking: [
+        'gemini-2.5-flash-preview-09-2025',
+        'gemini-2.5-flash'
+    ],
+    instant: [
+        'gemini-2.5-flash-lite-preview-09-2025',
+        'gemini-2.5-flash-lite'
+    ]
+};
+
+const rateLimitedModels = new Map();
 if (chats.length === 0) {
     const newChat = {
-        id: Melapela(),
+        id: generateId(),
         title: 'New chat',
         messages: [],
         createdAt: Date.now()
@@ -154,51 +291,58 @@ const attachBtn = document.getElementById('attach-btn');
 const imagePreview = document.getElementById('image-preview');
 const imagePreviewContainer = document.getElementById('image-preview-container');
 const removeImageBtn = document.getElementById('remove-image');
+const modeThinkingBtn = document.getElementById('mode-thinking');
+const modeInstantBtn = document.getElementById('mode-instant');
+const modeToggle = document.getElementById('mode-toggle');
 // nunca mas voy a escribir const luego de esto
 document.addEventListener('DOMContentLoaded', () => {
-    LoadearModelosXD();
+    loadModels();
     setupEventListeners();
     renderChatsList();
     loadCurrentChat();
     autoResizeTextarea();
+    updateModeButtons();
     
     typeWriterEffect(messageInput, getCurrentPlaceholders);
 });
 function setupEventListeners() {
-    sendBtn.addEventListener('click', sendMessage);
-    messageInput.addEventListener('keydown', (e) => {
+    if (sendBtn) sendBtn.addEventListener('click', sendMessage);
+    if (messageInput) messageInput.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
             sendMessage();
         }
     });
-    
-    providerSelect.addEventListener('change', (e) => {
+
+    if (providerSelect) providerSelect.addEventListener('change', (e) => {
         currentProvider = e.target.value;
         updateModelSelect();
     });
-    
-    modelSelect.addEventListener('change', (e) => {
-        currentModel = e.target.value;
-    });
-    modelSelect.addEventListener('click', () => {
-        if (!availableModels[currentProvider] || availableModels[currentProvider].length === 0) {
-            console.log("no hay modelos, cargando al clickear...");
-            LoadearModelosXD(2);
-        }
-    });
-    
-    clearBtn.addEventListener('click', clearChat);
-    toggleSidebarBtn.addEventListener('click', toggleSidebar);
-    newChatBtn.addEventListener('click', createNewChat);
-    messageInput.addEventListener('input', autoResizeTextarea);
-    attachBtn.addEventListener('click', () => attachInput.click());
-    attachInput.addEventListener('change', (e) => {
+
+    if (modelSelect) {
+        modelSelect.addEventListener('change', (e) => {
+            currentModel = e.target.value;
+        });
+        modelSelect.addEventListener('click', () => {
+            if (!availableModels[currentProvider] || availableModels[currentProvider].length === 0) {
+                console.log("no hay modelos, cargando al clickear...");
+                loadModels(2);
+            }
+        });
+    }
+
+    if (clearBtn) clearBtn.addEventListener('click', clearChat);
+    if (toggleSidebarBtn) toggleSidebarBtn.addEventListener('click', toggleSidebar);
+    if (newChatBtn) newChatBtn.addEventListener('click', createNewChat);
+    if (modeThinkingBtn) modeThinkingBtn.addEventListener('click', () => setMode('thinking'));
+    if (modeInstantBtn) modeInstantBtn.addEventListener('click', () => setMode('instant'));
+    if (messageInput) messageInput.addEventListener('input', autoResizeTextarea);
+    if (attachBtn && attachInput) attachBtn.addEventListener('click', () => attachInput.click());
+    if (attachInput) attachInput.addEventListener('change', (e) => {
         const file = e.target.files[0];
         if (!file) return;
         
         if (file.type.startsWith('video/')) {
-            // Validar y procesar video
             if (file.size > 50 * 1024 * 1024) {
                 alert('🎥 Video muy pesado (máximo 50MB)');
                 attachInput.value = '';
@@ -234,39 +378,33 @@ function setupEventListeners() {
         
         attachInput.value = '';
     });
-    
-    imageInput.addEventListener('change', (e) => {
+    if (imageInput) imageInput.addEventListener('change', (e) => {
         const file = e.target.files[0];
         if (file) {
             processImageFile(file);
         }
     });
-    
-    removeImageBtn.addEventListener('click', () => {
+
+    if (removeImageBtn) removeImageBtn.addEventListener('click', () => {
         selectedImageBase64 = null;
         selectedVideoFile = null;
-        imagePreviewContainer.style.display = 'none';
-        imageInput.value = '';
-        videoInput.value = '';
-        attachInput.value = '';
+        if (imagePreviewContainer) imagePreviewContainer.style.display = 'none';
+        if (imageInput) imageInput.value = '';
+        if (videoInput) videoInput.value = '';
+        if (attachInput) attachInput.value = '';
     });
-    
-    // Video file input handler
-    videoInput.addEventListener('change', (e) => {
+        if (videoInput) videoInput.addEventListener('change', (e) => {
         const file = e.target.files[0];
         if (!file) return;
-        
-        // Validar tamaño (max 50MB)
         if (file.size > 50 * 1024 * 1024) {
             alert(' Video muy pesado (máximo 50MB)');
             videoInput.value = '';
             return;
         }
-        
-        // Validar duración (max 30s)
+
         const video = document.createElement('video');
         video.preload = 'metadata';
-        
+
         video.onloadedmetadata = () => {
             window.URL.revokeObjectURL(video.src);
             if (video.duration > 30) {
@@ -274,15 +412,15 @@ function setupEventListeners() {
                 videoInput.value = '';
                 return;
             }
-            
+
             selectedVideoFile = file;
             console.log(`🎥 Video listo: ${file.name} (${(file.size / 1024 / 1024).toFixed(2)}MB, ${Math.round(video.duration)}s)`);
         };
-        
+
         video.src = URL.createObjectURL(file);
     });
-    
-    document.addEventListener('paste', (e) => {
+
+    if (document) document.addEventListener('paste', (e) => {
         const items = e.clipboardData?.items;
         if (!items) return;
         
@@ -358,11 +496,8 @@ function setupEventListeners() {
         }
     });
 
-    // initialize parallax after other listeners
     initParallax();
 }
-
-/* Parallax background: gentle movement of square elements following the mouse */
 function initParallax() {
     const container = document.getElementById('parallax-bg');
     if (!container) return;
@@ -477,18 +612,30 @@ async function processImageFile(file) {
     }
 }
 function createNewChat() {
+    const rate = canCreateNewChat();
+    if (!rate.allowed) {
+        addSystemMessage(`Please wait ${rate.wait}s before creating another chat.`);
+        disableNewChatButtonFor(rate.wait);
+        return;
+    }
+
+    recordNewChatCreation();
+
     const newChat = {
-        id: Melapela(),
+        id: generateId(),
         title: 'New chat',
         messages: [],
         createdAt: Date.now()
     };
-    
+
     chats.unshift(newChat);
     currentChatId = newChat.id;
     saveChats();
     renderChatsList();
     loadCurrentChat();
+
+    const nextRate = canCreateNewChat();
+    if (!nextRate.allowed) disableNewChatButtonFor(nextRate.wait);
 }
 
 function switchChat(chatId) {
@@ -595,10 +742,11 @@ function updateChatTitle(firstMessage) {
 }
 
 function toggleSidebar() {
+    if (!sidebar) return;
     sidebar.classList.toggle('hidden');
 }
 
-async function LoadearModelosXD(retries = 5, delay = 1000) {
+async function loadModels(retries = 5, delay = 1000) {
     try {
         console.log(`intentando cargar modelos... (intento ${6-retries})`);
         if (retries === 5) {
@@ -630,7 +778,7 @@ async function LoadearModelosXD(retries = 5, delay = 1000) {
         if (retries > 0) {
             console.log(`Reintentando en ${delay}ms...`);
             await new Promise(resolve => setTimeout(resolve, delay)); 
-            return LoadearModelosXD(retries - 1, delay * 1.5); // backoff exponencial
+            return loadModels(retries - 1, delay * 1.5); // backoff exponencial
         }
         
         modelSelect.innerHTML = '<option value="">Error loading models</option>';
@@ -656,61 +804,44 @@ function getShortModelName(modelName) {
 }
 
 function updateModelSelect() {
+    if (!modelSelect) return null;
     modelSelect.innerHTML = '';
-    
+
     const models = availableModels[currentProvider] || [];
-    
+
     if (models.length === 0) {
         modelSelect.innerHTML = '<option value="">No models</option>';
-        return;
+        return null;
     }
-    
+
     models.forEach(model => {
         const option = document.createElement('option');
         option.value = model;
         option.textContent = getShortModelName(model);
         modelSelect.appendChild(option);
     });
-    
 
-    // Orden de preferencia para seleccionar modelo por defecto
-    const modelPreferences = [
-        'gemini-2.5-flash',                    // Primera opción: gemini-2.5-flash (mejor)
-        'gemini-2.5-flash-preview-09-2025',    
-        'gemini-2.5-flash-lite',              
-        'gemini-2.5-flash-lite-preview-09-2025', // cuarta: el más burro de todos
-    ];
-    
-    let selectedModel = null;
-    
-    // Buscar el primer modelo que coincida exactamente con nuestras preferencias
-    for (const preference of modelPreferences) {
-        let found = models.find(m => m === preference || m.trim() === preference.trim());
-        if (found) {
-            selectedModel = found;
-            console.log(` Modelo seleccionado (exacto): ${getShortModelName(selectedModel)}`);
-            break;
-        }
-    }
-    
-    if (!selectedModel) {
-        for (const preference of modelPreferences) {
-            let found = models.find(m => m.includes(preference));
-            if (found) {
-                selectedModel = found;
-                console.log(`✅ Modelo seleccionado (parcial): ${getShortModelName(selectedModel)}`);
-                break;
-            }
-        }
+    let selectedModel = pickModelForMode(models, currentMode);
+
+    if (!selectedModel && currentMode === 'thinking') {
+        currentMode = 'instant';
+        updateModeButtons();
+        selectedModel = pickModelForMode(models, currentMode);
     }
 
     if (!selectedModel) {
-        selectedModel = models[0];
-        console.log(`⚠️  Usando modelo disponible: ${getShortModelName(selectedModel)}`);
+        selectedModel = models[0] || null;
+        if (selectedModel) {
+            console.log(`  Usando modelo disponible: ${getShortModelName(selectedModel)}`);
+        }
     }
-    
-    currentModel = selectedModel;
-    modelSelect.value = currentModel;
+
+    if (selectedModel) {
+        currentModel = selectedModel;
+        modelSelect.value = currentModel;
+    }
+
+    return selectedModel;
 }
 async function sendMessage() {
     if (isLoading) return;
@@ -725,6 +856,7 @@ async function sendMessage() {
     const chat = getCurrentChat();
     const imageToSend = selectedImageBase64;
     const imageUrlToDisplay = selectedImageBase64 ? `data:image/jpeg;base64,${selectedImageBase64}` : null;
+    const videoToSend = selectedVideoFile;
     
     messageInput.value = '';
     autoResizeTextarea();
@@ -759,25 +891,22 @@ async function sendMessage() {
             console.log('📸 Enviando imagen:', imageToSend.length, 'chars de base64');
         }
         
-        let response;
-        
-        if (selectedVideoFile) {
-            const formData = new FormData();
-            formData.append('message', message);
-            formData.append('video', selectedVideoFile);
-            formData.append('provider', currentProvider);
-            formData.append('model', currentModel);
-            formData.append('session_id', chat.id);
-            
-            console.log('📤 Enviando video al servidor...');
-            response = await fetch(`${API_URL}/chat`, {
-                method: 'POST',
-                body: formData
-            });
-            
-            selectedVideoFile = null;
-            videoInput.value = '';
-        } else {
+        const doRequest = async () => {
+            if (videoToSend) {
+                const formData = new FormData();
+                formData.append('message', message);
+                formData.append('video', videoToSend);
+                formData.append('provider', currentProvider);
+                formData.append('model', currentModel);
+                formData.append('session_id', chat.id);
+
+                console.log('📤 Enviando video al servidor...');
+                return fetch(`${API_URL}/chat`, {
+                    method: 'POST',
+                    body: formData
+                });
+            }
+
             const requestBody = {
                 message: message,
                 image: imageToSend || null, // base64 puro pal server
@@ -785,42 +914,64 @@ async function sendMessage() {
                 model: currentModel,
                 session_id: chat.id
             };
-            
-            response = await fetch(`${API_URL}/chat`, {
+
+            return fetch(`${API_URL}/chat`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(requestBody)
             });
-        }
-        removeLoadingMessage(loadingId);
-        
-        const contentType = response.headers.get('content-type');
-        let data;
-        
-        if (contentType && contentType.includes('application/json')) {
-            data = await response.json();
-        } else {
-            const text = await response.text();
-            console.error('Server returned non-JSON response:', text.substring(0, 200));
-            addSystemMessage(`Error ${response.status}: Video or file might be too large. Max 50MB for videos.`);
-            return;
-        }
-        
-        if (response.status === 429) {
-            showRateLimitWarning(data.wait_time);
-            addSystemMessage(`Hold on, wait ${data.wait_time}s`);
-        } else if (!response.ok) {
-            addSystemMessage(`Error ${response.status}: ${data.error || 'Server error'}`);
-        } else if (data.error) {
-            addSystemMessage(`Error: ${data.error}`);
-        } else {
+        };
+
+        let attempts = currentMode === 'thinking' ? 2 : 1;
+        let attempt = 0;
+
+        while (attempt < attempts) {
+            const response = await doRequest();
+            const contentType = response.headers.get('content-type');
+
+            if (!contentType || !contentType.includes('application/json')) {
+                const text = await response.text();
+                console.error('Server returned non-JSON response:', text.substring(0, 200));
+                removeLoadingMessage(loadingId);
+                addSystemMessage(`Error ${response.status}: Video or file might be too large. Max 50MB for videos.`);
+                return;
+            }
+
+            const data = await response.json();
+
+            if (response.status === 429) {
+                markModelRateLimited(currentModel, data.wait_time || 30);
+                if (currentMode === 'thinking' && attempt === 0) {
+                    setMode('instant', { silent: true });
+                    attempt += 1;
+                    continue;
+                }
+                removeLoadingMessage(loadingId);
+                showRateLimitWarning(data.wait_time || 0);
+                addSystemMessage(`Hold on, wait ${data.wait_time || 0}s`);
+                return;
+            }
+
+            removeLoadingMessage(loadingId);
+
+            if (!response.ok) {
+                addSystemMessage(`Error ${response.status}: ${data.error || 'Server error'}`);
+                return;
+            }
+
+            if (data.error) {
+                addSystemMessage(`Error: ${data.error}`);
+                return;
+            }
+
             addMessageToDOM('assistant', data.message, data.model);
-            chat.messages.push({ 
-                role: 'assistant', 
+            chat.messages.push({
+                role: 'assistant',
                 content: data.message,
                 model: data.model
             });
             saveChats();
+            return;
         }
     } catch (error) {
         removeLoadingMessage(loadingId);
@@ -828,11 +979,11 @@ async function sendMessage() {
         
 
         if (error.message.includes('Failed to fetch') || error.name === 'TypeError') {
-            addSystemMessage('❌ No se pudo conectar al servidor. Verifica que el backend esté corriendo.');
+            addSystemMessage(' No se pudo conectar al servidor. Verifica que el backend esté corriendo.');
         } else if (error.message.includes('NetworkError')) {
-            addSystemMessage('❌ Error de red. Verifica tu conexión a internet.');
+            addSystemMessage(' Error de red. Verifica tu conexión a internet.');
         } else {
-            addSystemMessage(`❌ Error: ${error.message || 'No se pudo enviar el mensaje'}`);
+            addSystemMessage(` Error: ${error.message || 'No se pudo enviar el mensaje'}`);
         }
     } finally {
         isLoading = false;
@@ -961,7 +1112,7 @@ async function checkHealth(retries = 3) {
     try {
         const response = await fetch(`${API_URL}/health`);
         const data = await response.json();
-        console.log('🍪 connected:', data.status);
+        console.log(' connected:', data.status);
     } catch (error) {
         if (retries > 0) {
             await new Promise(resolve => setTimeout(resolve, 1000));

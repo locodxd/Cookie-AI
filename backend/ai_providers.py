@@ -35,9 +35,13 @@ class GeminiProvider(AIProvider):
         self.models = [m.strip() for m in raw_models.split(',') if m.strip()]
         system_prompt = os.getenv('SYSTEM_PROMPT')
         self.system_prompt = system_prompt or self._get_default_prompt()
+        if "do not invent" not in self.system_prompt.lower():
+            self.system_prompt = (
+                self.system_prompt.strip()
+                + "\n\nIf you are unsure, say you don’t know. Do not invent facts."
+            )
     
     def _get_default_prompt(self):
-        # esto primero intenta cargar a ver si es que lo pusieron o carga el de flavortown
         try:
             custom_prompt_path = os.path.join(os.path.dirname(__file__), '..', 'cookie-prompt.txt')
             if os.path.exists(custom_prompt_path):
@@ -85,11 +89,14 @@ For details, direct them to #flavortown-help on Hack Club Slack."""
                 try:
                     api_key = self._get_next_key()
                     genai.configure(api_key=api_key)
-                    
-                    # Usar system_instruction directamente en el modelo (más limpio)
                     model_instance = genai.GenerativeModel(
                         model_name=try_model,
-                        system_instruction=self.system_prompt
+                        system_instruction=self.system_prompt,
+                        generation_config={
+                            "temperature": float(os.getenv("TEMPERATURE", "0.2")),
+                            "top_p": float(os.getenv("TOP_P", "0.95")),
+                            "max_output_tokens": int(os.getenv("MAX_OUTPUT_TOKENS", "1200")),
+                        }
                     )
                     
                     parts = []
@@ -102,12 +109,10 @@ For details, direct them to #flavortown-help on Hack Club Slack."""
                             if len(decoded) < 100:
                                 raise ValueError("imagen muy chica o corrupta")
                             
-                            # Abrir imagen desde bytes
                             img_bytes = io.BytesIO(decoded)
                             img = Image.open(img_bytes)
                             
                             if img.mode in ('RGBA', 'LA', 'P'):
-                                # Crear fondo blanco
                                 background = Image.new('RGB', img.size, (255, 255, 255))
                                 if img.mode == 'P':
                                     img = img.convert('RGBA')
@@ -130,9 +135,9 @@ For details, direct them to #flavortown-help on Hack Club Slack."""
                             final_img = Image.open(img_io)
                             parts.append(final_img)
                             
-                            print(f"✅ Imagen procesada: {final_img.size}, modo: {final_img.mode}, ~{len(img_io.getvalue())//1024}KB")
+                            print(f" Imagen procesada: {final_img.size}, modo: {final_img.mode}, ~{len(img_io.getvalue())//1024}KB")
                         except Exception as img_error:
-                            print(f"❌ Error procesando imagen: {img_error}")
+                            print(f" Error procesando imagen: {img_error}")
                             import traceback
                             traceback.print_exc()
                             return {'error': f'No se pudo procesar la imagen: {str(img_error)[:100]}'}
@@ -140,17 +145,13 @@ For details, direct them to #flavortown-help on Hack Club Slack."""
                     if video_path:
                         try:
                             print(f" Subiendo video a Gemini: {video_path}")
-                            # Dejamos que Gemini detecte el mime_type por la extensión
                             video_file = genai.upload_file(path=video_path)
                             print(f" Video subido: {video_file.name}. Procesando...")
-                            
-                            # Polling para esperar a que el video esté listo (ACTIVE)
-                            # Esto es CRUCIAL para videos en Gemini
-                            max_retries = 60 # 60 segundos de espera
+                            max_retries = 60 
                             for _ in range(max_retries):
                                 file_info = genai.get_file(video_file.name)
                                 if file_info.state.name == "ACTIVE":
-                                    print(" ✅ Video listo (Estado: ACTIVE)")
+                                    print("  Video listo (Estado: ACTIVE)")
                                     break
                                 elif file_info.state.name == "FAILED":
                                     raise ValueError("El procesamiento del video falló en los servidores de Gemini")
@@ -169,12 +170,9 @@ For details, direct them to #flavortown-help on Hack Club Slack."""
 
                     if not parts:
                         return {'error': 'mandá algo pa'}
-                    
-                    # Formatear historial asegurando que alterne roles correctamente.
-                    # Como vamos a usar send_message(), el historial debe terminar en un mensaje del 'model'.
+                
                     formatted_history = []
                     if history:
-                        # Buscamos el último mensaje del asistente para cerrar el historial ahí
                         last_model_idx = -1
                         for i in range(len(history) - 1, -1, -1):
                             if history[i]['role'] == 'assistant' or history[i]['role'] == 'model':
@@ -182,7 +180,6 @@ For details, direct them to #flavortown-help on Hack Club Slack."""
                                 break
                         
                         if last_model_idx != -1:
-                            # Incluimos hasta el último mensaje del modelo
                             for msg in history[:last_model_idx + 1]:
                                 role = 'user' if msg['role'] == 'user' else 'model'
                                 # Evitar mensajes vacíos en el historial
@@ -192,7 +189,6 @@ For details, direct them to #flavortown-help on Hack Club Slack."""
                     
                     print(f" 📜 Historial formateado con {len(formatted_history)} mensajes")
                     
-                    # La forma oficial más estable es usar start_chat si hay historia
                     chat_session = model_instance.start_chat(history=formatted_history)
                     response = chat_session.send_message(parts)
 
@@ -210,9 +206,6 @@ For details, direct them to #flavortown-help on Hack Club Slack."""
                 except Exception as e:
                     error_str = str(e).lower()
                     print(f" ❌ Error con {try_model} (key {attempt + 1}): {str(e)}")
-                    
-                    # Si recibimos un 500 o error de servidor de Google, podríamos querer reintentar
-                    # pero si es un error de formato (400), mejor saltar o fallar.
                     if "400" in error_str or "invalid" in error_str:
                         return {'error': f'Error en el formato del mensaje: {str(e)}'}
                     
@@ -221,7 +214,6 @@ For details, direct them to #flavortown-help on Hack Club Slack."""
                         break  
                     
                     if attempt == len(self.api_keys) - 1:
-                        # Todas las keys fallaron con este modelo, intentar con el siguiente, se nota la pobreza kajdskajkd
                         break
                     continue
             

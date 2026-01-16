@@ -57,7 +57,6 @@ body {
     opacity: 0.9;
 }
 
-/* Slightly different visual for smaller squares */
 .parallax-square[style*="width:28px"] { border-radius: 6px; opacity: 0.8; }
 
 @media (prefers-reduced-motion: reduce) {
@@ -68,18 +67,30 @@ body {
     width: 260px;
     min-width: 260px;
     max-width: 260px;
-    flex: 0 0 260px; /* fixed width, don't grow */
+    flex: 0 0 260px; 
     background: var(--bg-secondary);
     border-right: 1px solid var(--border);
     display: flex;
     flex-direction: column;
-    transition: transform 0.3s ease;
     justify-content: flex-start;
-    overflow: hidden; /* prevent long titles from expanding the sidebar */
+    overflow: hidden; 
+    transform: translateX(0);
+    opacity: 1;
+    transition:
+        transform 0.35s cubic-bezier(0.16, 1, 0.3, 1),
+        opacity 0.25s ease,
+        width 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+
+    will-change: transform;
 }
 
 .sidebar.hidden {
-    display: none; 
+    transform: translateX(-100%);
+    opacity: 0;
+    pointer-events: none;
+    width: 0 !important;
+    min-width: 0 !important;
+    flex: 0 0 0 !important;
 }
 
 @media (max-width: 768px) {
@@ -87,41 +98,16 @@ body {
         position: absolute;
         height: 100%;
         z-index: 100;
-        width: 100%; 
-        background: rgba(10, 10, 10, 0.8) !important;
+        width: 100%;
+        background: rgba(10, 10, 10, 0.8);
         backdrop-filter: blur(12px);
-        -webkit-backdrop-filter: blur(12px);
-        border-right: 1px solid rgba(255, 255, 255, 0.05);
-        /* center contents vertically when sidebar overlays on small screens */
-        justify-content: center;
     }
-    
+
     .sidebar.hidden {
-        display: none;
-    }
-
-
-    .controls {
-        gap: 0.3rem;
-    }
-    
-    .selector {
-        padding: 0.4rem;
-        font-size: 0.75rem;
-        max-width: 100px;
-    }
-    
-    .message-content {
-        max-width: 90%;
-    }
-
-    /* Make sidebar header centered when overlayed */
-    .sidebar .sidebar-header {
-        align-items: center;
-        text-align: center;
+        transform: translateX(-100%);
+        opacity: 0;
     }
 }
-
 .logo {
     display: flex;
     align-items: center;
@@ -175,6 +161,31 @@ body {
     flex: 1;
     overflow-y: auto;
     padding: 0.5rem;
+}
+
+.chats-list::-webkit-scrollbar {
+    width: 6px;
+}
+
+.chats-list::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.chats-list::-webkit-scrollbar-thumb {
+    background: var(--border-light);
+    border-radius: 10px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+    transition: all 0.3s ease;
+}
+
+.chats-list::-webkit-scrollbar-thumb:hover {
+    background: var(--blue-primary);
+}
+
+.chats-list {
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-light) transparent;
 }
 
 .chat-item {
@@ -233,7 +244,7 @@ body {
     border: 1px solid var(--border-);
 }
 #image-preview-container {
-    display: none; /* oculto por defecto */
+    display: none; 
 }
 
 #remove-image {
@@ -288,11 +299,20 @@ body {
     overflow: hidden;
     position: relative;
 }
+
+.main-content {
+    transition: filter 0.28s ease;
+}
+
+.sidebar:not(.hidden) ~ .main-content {
+    filter: none;
+}
 header {
     display: flex;
     align-items: center;
     gap: 1rem;
     padding: 1rem 1.5rem;
+    min-height: 64px;
     background: var(--bg-secondary);
     border-bottom: 1px solid var(--border);
     position: relative; 
@@ -327,6 +347,39 @@ header {
 }
 .controls {
     display: none !important;
+}
+
+.mode-toggle {
+    margin-left: auto;
+    display: flex;
+    gap: 0.6rem;
+    align-items: center;
+    padding-right: 0.25rem;
+}
+
+.mode-btn {
+    padding: 0.45rem 0.9rem;
+    background: var(--bg-tertiary);
+    color: var(--text-secondary);
+    border: 1px solid var(--border-light);
+    border-radius: 999px;
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: all 0.18s ease;
+}
+
+.mode-btn:hover {
+    border-color: var(--blue-primary);
+    color: var(--text-primary);
+    box-shadow: 0 4px 14px var(--blue-glow);
+    transform: translateY(-1px);
+}
+
+.mode-btn.mode-active {
+    background: var(--blue-primary);
+    color: #fff;
+    border-color: var(--blue-primary);
+    box-shadow: 0 6px 18px var(--blue-glow);
 }
 
 .selector {
@@ -368,7 +421,7 @@ header {
 .chat-container {
     flex: 1;
     overflow-y: auto;
-    padding: 2rem 1.5rem;
+    padding: 2rem 1.5rem 8.5rem;
 }
 
 .chat-container::-webkit-scrollbar {
@@ -490,7 +543,7 @@ header {
     max-width: 70%;
     font-size: 0.95rem;
     word-wrap: break-word;
-    overflow-wrap: break-word;
+    overflow-wrap: anywhere;
 }
 
 .message.user {
@@ -720,7 +773,6 @@ header {
     margin-bottom: 10px;
     max-width: 100%;
 }
-
 .message-image {
     max-width: 100%;
     max-height: 350px;
@@ -730,7 +782,6 @@ header {
     border: 1px solid rgba(255, 255, 255, 0.1);
     display: block;
 }
-
 .attach-btn {
     align-self: flex-end;
     flex-shrink: 0;
@@ -762,12 +813,15 @@ header {
         position: absolute;
         height: 100%;
         z-index: 100;
+        width: 100%;
+        background: rgba(10, 10, 10, 0.8);
+        backdrop-filter: blur(12px);
     }
-    
     .sidebar.hidden {
         transform: translateX(-100%);
+        opacity: 0;
     }
-    
+
     .message-content {
         max-width: 90%;
     }

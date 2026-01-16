@@ -7,7 +7,6 @@
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <!-- Parallax background layer (behind content) -->
     <div class="parallax-bg" id="parallax-bg" aria-hidden="true">
         <span class="parallax-square" data-depth="0.02" style="left:8%;top:12%;width:92px;height:92px;"></span>
         <span class="parallax-square" data-depth="0.04" style="left:72%;top:8%;width:56px;height:56px;"></span>
@@ -18,7 +17,6 @@
         <span class="parallax-square" data-depth="0.08" style="left:62%;top:50%;width:44px;height:44px;"></span>
         <span class="parallax-square" data-depth="0.07" style="left:36%;top:82%;width:40px;height:40px;"></span>
     </div>
-    <!-- sidebar -->
     <div class="sidebar" id="sidebar">
         <div class="sidebar-header">
             <div class="logo">
@@ -42,6 +40,10 @@
                     <option value="">Loading...</option>
                 </select>
                 <button id="clear-btn" class="icon-btn" title="clear chat">🗑️</button>
+            </div>
+            <div class="mode-toggle" id="mode-toggle" aria-label="mode selector">
+                <button id="mode-thinking" class="mode-btn mode-active" type="button">Thinking</button>
+                <button id="mode-instant" class="mode-btn" type="button">Instant</button>
             </div>
         </header>
         <div id="chat-container" class="chat-container">
